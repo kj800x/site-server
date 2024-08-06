@@ -18,7 +18,7 @@ pub struct Config {
     pub site: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SiteItems {
     #[serde(serialize_with = "serialize_map_values")]
@@ -47,6 +47,7 @@ impl DerefMut for SiteItems {
 }
 
 #[allow(dead_code)]
+#[derive(Clone)]
 pub struct WorkDir {
     pub path: Box<Path>,
     pub config: Config,

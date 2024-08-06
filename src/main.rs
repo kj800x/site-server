@@ -6,17 +6,32 @@ use actix_web::{
     App, HttpServer, Responder,
 };
 use actix_web_opentelemetry::{PrometheusMetricsHandler, RequestMetrics, RequestTracing};
+use clap::Parser;
 use maud::html;
 use opentelemetry::global;
 use opentelemetry_sdk::metrics::MeterProvider;
-use r2d2::Pool;
-use r2d2_sqlite::SqliteConnectionManager;
+use workdir::WorkDir;
 
 mod collections;
 mod errors;
 mod serde;
 mod site;
 mod workdir;
+
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+#[command(propagate_version = true)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+
+    work_dir: String,
+}
+
+#[derive(clap::Subcommand)]
+enum Commands {
+    Serve,
+}
 
 // #[derive(Debug, Serialize, Deserialize)]
 // struct HydratedClass {
@@ -62,13 +77,27 @@ mod workdir;
 // }
 
 #[get("/hello")]
-async fn hello_handler() -> Result<impl Responder, actix_web::Error> {
+async fn hello_handler(work_dir: web::Data<WorkDir>) -> Result<impl Responder, actix_web::Error> {
+    let workdir = work_dir.clone();
+
     return Ok(html! {
         h1 { "Hello, world!" }
         p.intro {
             "This is an example of the "
             a href="https://github.com/lambda-fairy/maud" { "Maud" }
             " template language."
+        }
+        p {
+            "The current site is: "
+            code { (workdir.path.to_string_lossy()) }
+        }
+        p {
+            "The items in the site are: "
+            ul {
+                @for (key, item) in workdir.crawled.iter() {
+                    li { (key) ": " (item.url) }
+                }
+            }
         }
     });
 }
@@ -236,9 +265,13 @@ async fn hello_handler() -> Result<impl Responder, actix_web::Error> {
 //     HttpResponse::Ok().body("Logout success!")
 // }
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
+async fn run() -> crate::errors::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
+
+    let cli = Cli::parse();
+    println!("Loading WorkDir...");
+    let work_dir = WorkDir::new(cli.work_dir)?;
+
     let registry = prometheus::Registry::new();
     let exporter = opentelemetry_prometheus::exporter()
         .with_registry(registry.clone())
@@ -247,49 +280,58 @@ async fn main() -> std::io::Result<()> {
     let provider = MeterProvider::builder().with_reader(exporter).build();
     global::set_meter_provider(provider);
 
-    // connect to SQLite DB
-    let manager = SqliteConnectionManager::file(
-        std::env::var("DATABASE_PATH").unwrap_or("db.db".to_string()),
-    );
-    let pool = Pool::new(manager).unwrap();
+    match &cli.command {
+        Commands::Serve {} => {
+            log::info!("Starting HTTP server at http://localhost:8080/api");
 
-    // migrate(&pool).unwrap();
+            HttpServer::new(move || {
+                App::new()
+                    .wrap(RequestTracing::new())
+                    .wrap(RequestMetrics::default())
+                    .route(
+                        "/api/metrics",
+                        web::get().to(PrometheusMetricsHandler::new(registry.clone())),
+                    )
+                    .wrap(
+                        SessionMiddleware::builder(
+                            CookieSessionStore::default(),
+                            Key::from(&[0; 64]),
+                        )
+                        .cookie_secure(false)
+                        .build(),
+                    )
+                    .app_data(web::Data::new(work_dir.clone()))
+                    .wrap(middleware::Logger::default())
+                    .service(hello_handler)
+                // .service(home_page_omnibus)
+                // .service(stats_page_omnibus)
+                // .service(event_class_listing)
+                // .service(event_class_create)
+                // .service(event_class_update)
+                // .service(event_class_delete)
+                // .service(event_class_events)
+                // .service(event_class_latest_event)
+                // .service(record_event)
+                // .service(delete_event)
+                // .service(profile)
+                // .service(login)
+                // .service(logout)
+                // .service(register)
+                // .route("/api/hey", web::get().to(manual_hello))
+            })
+            .bind(("127.0.0.1", 8080))?
+            .run()
+            .await?;
 
-    log::info!("Starting HTTP server at http://localhost:8080/api");
+            Ok(())
+        }
+    }
+}
 
-    HttpServer::new(move || {
-        App::new()
-            .wrap(RequestTracing::new())
-            .wrap(RequestMetrics::default())
-            .route(
-                "/api/metrics",
-                web::get().to(PrometheusMetricsHandler::new(registry.clone())),
-            )
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), Key::from(&[0; 64]))
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .app_data(web::Data::new(pool.clone()))
-            .wrap(middleware::Logger::default())
-            .service(hello_handler)
-        // .service(home_page_omnibus)
-        // .service(stats_page_omnibus)
-        // .service(event_class_listing)
-        // .service(event_class_create)
-        // .service(event_class_update)
-        // .service(event_class_delete)
-        // .service(event_class_events)
-        // .service(event_class_latest_event)
-        // .service(record_event)
-        // .service(delete_event)
-        // .service(profile)
-        // .service(login)
-        // .service(logout)
-        // .service(register)
-        // .route("/api/hey", web::get().to(manual_hello))
-    })
-    .bind(("127.0.0.1", 8080))?
-    .run()
-    .await
+#[actix_web::main]
+async fn main() {
+    if let Err(ref _e) = run().await {
+        // _e.print();
+        ::std::process::exit(1);
+    }
 }
