@@ -1,12 +1,15 @@
 [package]
-name = "life-logger-rs"
+name = "site-server"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 clap = { version = "4.1.4", features = ["derive"] }
+chrono = "0.4.38"
 env_logger = "0.10"
-futures-util = { version = "0.3.17", default-features = false, features = ["std"] }
+futures-util = { version = "0.3.17", default-features = false, features = [
+  "std",
+] }
 actix-web = "4"
 r2d2 = "0.8"
 r2d2_sqlite = "0.22"
@@ -21,8 +24,16 @@ error-chain = "0.12.4"
 maud = { version = "*", features = ["actix-web"] }
 
 # metrics
-actix-web-opentelemetry = { version = "0.16.0", features = ["metrics", "metrics-prometheus"] }
+actix-web-opentelemetry = { version = "0.16.0", features = [
+  "metrics",
+  "metrics-prometheus",
+] }
 opentelemetry = { version = "0.21", features = ["trace"] }
-opentelemetry_sdk = { version = "0.21", features = ["metrics", "rt-tokio-current-thread"] }
+opentelemetry_sdk = { version = "0.21", features = [
+  "metrics",
+  "rt-tokio-current-thread",
+] }
 opentelemetry-prometheus = { version = "0.14" }
 prometheus = { version = "0.13" }
+actix-files = "0.6.6"
+rand = { version = "0.8.5", features = ["alloc"] }

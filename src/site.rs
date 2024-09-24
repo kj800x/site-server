@@ -90,6 +90,18 @@ pub enum FormattedText {
     Html { value: String }, // Implies that the import process should run a to-markdown on this
 }
 
+// FIXME: This isn't actually correct
+impl Display for FormattedText {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FormattedText::Markdown { value } | FormattedText::Plaintext { value } => {
+                write!(f, "{}", value)
+            }
+            FormattedText::Html { value } => write!(f, "Html({})", value),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CrawlItem {
@@ -107,10 +119,52 @@ pub struct CrawlItem {
     #[serde(serialize_with = "serialize_map_values")]
     #[serde(deserialize_with = "deserialize_map_values")]
     pub files: IndexMap<String, FileCrawlType>,
+    #[serde(default)]
+    #[serde(serialize_with = "serialize_map_values")]
+    #[serde(deserialize_with = "deserialize_map_values")]
+    /** A preview is a file that can be used as a thumbnail for the CrawlItem in a listing page
+     * It's not typically shown on the details page, but is potentially a low resolution image from the item,
+     * or potentially a promotionalized image for the shoot. A CrawlItem having one is benefical because it
+     * means that whatever is serving the site doesn't need to dynamically generate thumbnails on the fly.
+     */
+    pub previews: IndexMap<String, FileCrawlType>,
 }
 
 impl crate::collections::GetKey for CrawlItem {
     fn get_key(&self) -> &str {
         &self.key
+    }
+}
+
+fn first_downloaded_image<'a>(mut arr: impl Iterator<Item = &'a FileCrawlType>) -> Option<String> {
+    arr.find_map(|file| match file {
+        FileCrawlType::Image {
+            filename,
+            downloaded,
+            ..
+        } => {
+            if *downloaded {
+                Some(filename.clone())
+            } else {
+                None
+            }
+        }
+        FileCrawlType::Video { .. } => None,
+        FileCrawlType::Intermediate {
+            downloaded, nested, ..
+        } => {
+            if *downloaded {
+                first_downloaded_image(nested.values())
+            } else {
+                None
+            }
+        }
+        FileCrawlType::Text { .. } => None,
+    })
+}
+
+impl CrawlItem {
+    pub fn thumbnail_path(&self) -> Option<String> {
+        first_downloaded_image(self.previews.values().chain(self.files.values()))
     }
 }
