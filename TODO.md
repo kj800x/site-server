@@ -1,0 +1,9 @@
+- [ ] Test on actual data
+- [ ] "Tags support"
+- [ ] Support text
+- [ ] Support video
+- [ ] Support items with IntermediateFiles
+- [ ] Support descriptions better
+- [ ] Impl reddit-style view
+- [ ] Impl blog style view
+- [ ] Impl updates style view
