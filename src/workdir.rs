@@ -26,6 +26,14 @@ pub struct SiteItems {
     pub items: IndexMap<String, CrawlItem>,
 }
 
+impl SiteItems {
+    /// Sort the items by source_published date in descending order, newest first.
+    pub fn sort(&mut self) {
+        self.items
+            .sort_by(|_k1, v1, _k2, v2| v2.source_published.cmp(&v1.source_published));
+    }
+}
+
 impl From<IndexMap<String, CrawlItem>> for SiteItems {
     fn from(value: IndexMap<String, CrawlItem>) -> Self {
         SiteItems { items: value }
@@ -64,7 +72,7 @@ impl WorkDir {
             .chain_err(|| "config.json was not well-formatted")?;
 
         let crawled_path = path.join("crawled.json");
-        let crawled = {
+        let mut crawled: SiteItems = {
             if crawled_path.exists() {
                 let crawled_file =
                     File::open(crawled_path).chain_err(|| "Unable to open crawled.json")?;
@@ -74,6 +82,8 @@ impl WorkDir {
                 IndexMap::new().into()
             }
         };
+
+        crawled.sort();
 
         Ok(WorkDir {
             path: path.into(),

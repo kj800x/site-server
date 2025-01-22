@@ -3,6 +3,10 @@ use std::fmt::Display;
 use crate::collections::*;
 use crate::serde::*;
 use indexmap::IndexMap;
+use maud::html;
+use maud::Markup;
+use maud::PreEscaped;
+use maud::Render;
 pub use serde::{Deserialize, Serialize};
 use serde_json::Value;
 pub use std::fmt::Debug;
@@ -75,6 +79,15 @@ pub enum CrawlTag {
     Detailed { value: String, group: String },
 }
 
+impl CrawlTag {
+    pub fn to_string(&self) -> String {
+        match self {
+            CrawlTag::Simple(value) => value.clone(),
+            CrawlTag::Detailed { value, .. } => value.clone(),
+        }
+    }
+}
+
 impl From<String> for CrawlTag {
     fn from(value: String) -> Self {
         CrawlTag::Simple(value)
@@ -98,6 +111,20 @@ impl Display for FormattedText {
                 write!(f, "{}", value)
             }
             FormattedText::Html { value } => write!(f, "Html({})", value),
+        }
+    }
+}
+
+impl Render for FormattedText {
+    fn render(&self) -> Markup {
+        match self {
+            FormattedText::Plaintext { value } => {
+                html!( pre { (value) } )
+            }
+            FormattedText::Markdown { .. } => {
+                todo!();
+            }
+            FormattedText::Html { value } => PreEscaped(value.to_owned()),
         }
     }
 }
@@ -166,5 +193,27 @@ fn first_downloaded_image<'a>(mut arr: impl Iterator<Item = &'a FileCrawlType>) 
 impl CrawlItem {
     pub fn thumbnail_path(&self) -> Option<String> {
         first_downloaded_image(self.previews.values().chain(self.files.values()))
+    }
+
+    /// Take the files and replace any intermediate files with their nested files
+    pub fn flat_files(&self) -> IndexMap<String, FileCrawlType> {
+        self.files
+            .clone()
+            .into_iter()
+            .flat_map(|(key, file)| match file {
+                FileCrawlType::Intermediate {
+                    ref nested,
+                    downloaded,
+                    ..
+                } => {
+                    if downloaded {
+                        nested.clone()
+                    } else {
+                        IndexMap::from([(key, file)])
+                    }
+                }
+                _ => IndexMap::from([(key, file)]),
+            })
+            .collect()
     }
 }

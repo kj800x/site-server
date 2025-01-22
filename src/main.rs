@@ -53,6 +53,17 @@ impl Render for Css {
     }
 }
 
+/// Links to a JS source file at the given path.
+struct Js(&'static str);
+
+impl Render for Js {
+    fn render(&self) -> Markup {
+        html! {
+            script type="text/javascript" src=(self.0) {}
+        }
+    }
+}
+
 macro_rules! serve_static_file {
     ($file:expr) => {
         web::resource(concat!("res/", $file)).route(web::get().to(|| async move {
@@ -177,9 +188,46 @@ async fn info_handler(
     });
 }
 
+fn paginator(page: usize, total: usize, per_page: usize, prefix: &str) -> Markup {
+    let pages = (total + per_page - 1) / per_page;
+    let mut links = vec![];
+
+    if page > 1 {
+        links.push(html! {
+            a href=(format!("{}/{}", prefix, page - 1)) { "<" }
+        });
+    }
+
+    for i in 1..=pages {
+        if i == page {
+            links.push(html! {
+                span { (i) }
+            });
+        } else if (i as isize - page as isize).abs() < 5 {
+            links.push(html! {
+                a href=(format!("{}/{}", prefix, i)) { (i) }
+            });
+        }
+    }
+
+    if page < pages {
+        links.push(html! {
+            a href=(format!("{}/{}", prefix, page + 1)) { ">" }
+        });
+    }
+
+    return html! {
+        .paginator {
+            @for link in &links {
+                (link)
+            }
+        }
+    };
+}
+
 fn item_thumbnail(item: &CrawlItem, site: &str) -> Markup {
     html! {
-        a.item_thumb_container href=(format!("/{}/item/{}/{}", site, item.key, item.files.keys().into_iter().next().unwrap_or(&"".to_string()))) {
+        a.item_thumb_container href=(format!("/{}/item/{}/{}", site, item.key, item.flat_files().keys().into_iter().next().unwrap_or(&"".to_string()))) {
             .item_thumb_img {img src=(format!("/{}/assets/{}", site, item.thumbnail_path().unwrap_or("404".to_string()))) {}}
             .item_thumb_tags {
                 @for tag in &item.tags {
@@ -208,11 +256,169 @@ async fn random_handler(
 
     return Ok(html! {
         (Css("/res/styles.css"))
-        h1 { "Hello, random world!" }
-        @for item in &items {
-            ( item_thumbnail(&item, &site.0) )
+        h1.page_title { "Random items" }
+        .item_thumb_grid {
+            @for item in &items {
+                ( item_thumbnail(&item, &site.0) )
+            }
+        }
+        .paginator {
+            a href=(format!("/{}/random", &site.0)) { "See more" }
         }
     });
+}
+
+async fn generic_latest_handler(
+    site: web::Data<WorkDirPrefix>,
+    workdir: web::Data<WorkDir>,
+    path: web::Path<usize>,
+) -> Result<impl Responder, actix_web::Error> {
+    let page = path.into_inner();
+    let items: Vec<&CrawlItem> = workdir
+        .crawled
+        .items
+        .values()
+        .into_iter()
+        .skip((page - 1) * 40)
+        .take(40)
+        .collect();
+
+    return Ok(html! {
+        (Css("/res/styles.css"))
+        h1.page_title { "Latest items" }
+        ( paginator(page, workdir.crawled.items.len(), 40, &format!("/{}/latest", &site.0)) )
+        .item_thumb_grid {
+            @for item in &items {
+                ( item_thumbnail(&item, &site.0) )
+            }
+        }
+        ( paginator(page, workdir.crawled.items.len(), 40, &format!("/{}/latest", &site.0)) )
+    });
+}
+
+#[get("/latest/{page}")]
+async fn latest_page_handler(
+    site: web::Data<WorkDirPrefix>,
+    workdir: web::Data<WorkDir>,
+    path: web::Path<usize>,
+) -> Result<impl Responder, actix_web::Error> {
+    generic_latest_handler(site, workdir, path).await
+}
+
+#[get("/latest")]
+async fn latest_handler(
+    site: web::Data<WorkDirPrefix>,
+    workdir: web::Data<WorkDir>,
+) -> Result<impl Responder, actix_web::Error> {
+    generic_latest_handler(site, workdir, web::Path::from(1)).await
+}
+
+async fn generic_oldest_handler(
+    site: web::Data<WorkDirPrefix>,
+    workdir: web::Data<WorkDir>,
+    path: web::Path<usize>,
+) -> Result<impl Responder, actix_web::Error> {
+    let page = path.into_inner();
+    let items: Vec<&CrawlItem> = workdir
+        .crawled
+        .items
+        .values()
+        .rev()
+        .into_iter()
+        .skip((page - 1) * 40)
+        .take(40)
+        .collect();
+
+    return Ok(html! {
+        (Css("/res/styles.css"))
+        h1.page_title { "Oldest items" }
+        ( paginator(page, workdir.crawled.items.len(), 40, &format!("/{}/oldest", &site.0)) )
+        .item_thumb_grid {
+            @for item in &items {
+                ( item_thumbnail(&item, &site.0) )
+            }
+        }
+        ( paginator(page, workdir.crawled.items.len(), 40, &format!("/{}/oldest", &site.0)) )
+    });
+}
+
+#[get("/oldest/{page}")]
+async fn oldest_page_handler(
+    site: web::Data<WorkDirPrefix>,
+    workdir: web::Data<WorkDir>,
+    path: web::Path<usize>,
+) -> Result<impl Responder, actix_web::Error> {
+    generic_oldest_handler(site, workdir, path).await
+}
+
+#[get("/oldest")]
+async fn oldest_handler(
+    site: web::Data<WorkDirPrefix>,
+    workdir: web::Data<WorkDir>,
+) -> Result<impl Responder, actix_web::Error> {
+    generic_oldest_handler(site, workdir, web::Path::from(1)).await
+}
+
+async fn generic_tag_handler(
+    site: web::Data<WorkDirPrefix>,
+    workdir: web::Data<WorkDir>,
+    tag: String,
+    page: usize,
+) -> Result<impl Responder, actix_web::Error> {
+    let filtered_items = workdir
+        .crawled
+        .items
+        .values()
+        .into_iter()
+        .filter(|item| item.tags.iter().any(|x| x.to_string() == tag))
+        .collect::<Vec<&CrawlItem>>();
+
+    let filtered_items_len = filtered_items.len();
+
+    let items: Vec<&CrawlItem> = filtered_items
+        .into_iter()
+        .skip((page - 1) * 40)
+        .take(40)
+        .collect();
+
+    return Ok(html! {
+        (Css("/res/styles.css"))
+        h1.page_title { "Items tagged \"" (tag) "\"" }
+        ( paginator(page, filtered_items_len, 40, &format!("/{}/tag/{}", &site.0, tag)) )
+        .item_thumb_grid {
+            @for item in &items {
+                ( item_thumbnail(&item, &site.0) )
+            }
+        }
+        ( paginator(page, filtered_items_len, 40, &format!("/{}/tag/{}", &site.0, tag)) )
+    });
+}
+
+#[get("/tag/{tag}/{page}")]
+async fn tag_page_handler(
+    site: web::Data<WorkDirPrefix>,
+    workdir: web::Data<WorkDir>,
+    path: web::Path<(String, usize)>,
+) -> Result<impl Responder, actix_web::Error> {
+    let (tag, page) = path.into_inner();
+    generic_tag_handler(site, workdir, tag, page).await
+}
+
+#[get("/tag/{tag}")]
+async fn tag_handler(
+    site: web::Data<WorkDirPrefix>,
+    workdir: web::Data<WorkDir>,
+    path: web::Path<String>,
+) -> Result<impl Responder, actix_web::Error> {
+    let tag = path.into_inner();
+    generic_tag_handler(site, workdir, tag, 1).await
+}
+
+#[get("")]
+async fn root_redirect(site: web::Data<WorkDirPrefix>) -> Result<HttpResponse, actix_web::Error> {
+    Ok(HttpResponse::SeeOther()
+        .append_header(("Location", format!("/{}/latest", site.0)))
+        .finish())
 }
 
 #[get("/item/{item}")]
@@ -251,7 +457,7 @@ async fn item_redirect(
     ))
 }
 
-#[get("/item/{item}/{file}")]
+#[get("/item/{item}/{file:.*}")]
 async fn item_handler(
     path: web::Path<(String, String)>,
     site: web::Data<WorkDirPrefix>,
@@ -267,7 +473,8 @@ async fn item_handler(
         });
     };
 
-    let file = item.files.get(path.1.as_str());
+    let files = item.flat_files();
+    let file = files.get(path.1.as_str());
 
     let Some(file) = file else {
         return Ok(html! {
@@ -277,10 +484,15 @@ async fn item_handler(
         });
     };
 
-    // FIXME: Handle denesting of intermediate files properly
+    // Find filename of next and previous file
+    let file_keys = files.keys().collect::<Vec<&String>>();
+    let file_index = file_keys.iter().position(|x| **x == path.1).unwrap();
+    let prev_file = file_keys.get(file_index.wrapping_sub(1)).map(|x| *x);
+    let next_file = file_keys.get(file_index.wrapping_add(1)).map(|x| *x);
 
     return Ok(html! {
         (Css("/res/styles.css"))
+        (Js("/res/detail_page.js"))
         .item_detail_page_container {
             .item_detail_page_sidebar {
                 dt { "Source" }
@@ -306,8 +518,12 @@ async fn item_handler(
 
                 dt { "Files" }
                 dd {
-                    @for file in &item.files {
-                        a href=(format!("/{}/item/{}/{}", site.0, item.key, file.0)) { (file.0) }
+                    @for file in &files {
+                        @if *file.0 == path.1 {
+                            span.file_link { (file.0) }
+                        } @else {
+                            a.file_link href=(format!("/{}/item/{}/{}", site.0, item.key, file.0)) "data-is-prev"[prev_file.is_some_and(|x| x == file.0)] "data-is-next"[next_file.is_some_and(|x| x == file.0)] { (file.0) }
+                        }
                     }
                 }
 
@@ -318,15 +534,35 @@ async fn item_handler(
                 dd {
                     @for tag in &item.tags {
                         @match tag {
-                            site::CrawlTag::Simple(x) => .tag { (x) },
-                            site::CrawlTag::Detailed { value, .. } => .tag { (value) },
+                            site::CrawlTag::Simple(x) => a.tag href=(format!("/{}/tag/{}", site.0, x)) { (x) },
+                            site::CrawlTag::Detailed { value, .. } => a.tag href=(format!("/{}/tag/{}", site.0, value)) { (value) },
                         }
                     }
                 }
             }
             .item_detail_page_file {
-                // FIXME: Support all the file types
-                img src=(format!("/{}/assets/{}", site.0, item.thumbnail_path().unwrap_or("404".to_string()))) {}
+                @match file {
+                    site::FileCrawlType::Image { filename, downloaded, .. } => {
+                        @if *downloaded {
+                            img src=(format!("/{}/assets/{}", site.0, filename)) {}
+                        } @else {
+                            p { "Image not downloaded" }
+                        }
+                    }
+                    site::FileCrawlType::Video { filename, downloaded, .. } => {
+                        @if *downloaded {
+                            video autoplay controls {
+                                source src=(format!("/{}/assets/{}", site.0, filename)) {}
+                            }
+                        } @else {
+                            p { "Video not downloaded" }
+                        }
+                    }
+                    site::FileCrawlType::Intermediate { .. } => {
+                        p { "Intermediate file, no preview available" }
+                    }
+                    _ => {}
+                }
             }
         }
     });
@@ -520,7 +756,8 @@ async fn run() -> crate::errors::Result<()> {
     work_dir_map.insert(
         work_dir_path
             .clone()
-            .as_os_str()
+            .file_name()
+            .unwrap()
             .to_string_lossy()
             .to_string(),
         work_dir,
@@ -534,9 +771,11 @@ async fn run() -> crate::errors::Result<()> {
     let provider = MeterProvider::builder().with_reader(exporter).build();
     global::set_meter_provider(provider);
 
+    let listen_address = std::env::var("LISTEN_ADDRESS").unwrap_or("127.0.0.1".to_owned());
+
     match &cli.command {
         Commands::Serve {} => {
-            log::info!("Starting HTTP server at http://localhost:8080");
+            log::info!("Starting HTTP server at http://{}:8080", listen_address);
 
             HttpServer::new(move || {
                 let mut app = App::new()
@@ -557,7 +796,8 @@ async fn run() -> crate::errors::Result<()> {
                     .app_data(web::Data::new(work_dir_map.clone()))
                     .app_data(web::Data::new(StartTime(Utc::now().timestamp_millis())))
                     .wrap(middleware::Logger::default())
-                    .service(serve_static_file!("styles.css"));
+                    .service(serve_static_file!("styles.css"))
+                    .service(serve_static_file!("detail_page.js"));
 
                 for (path, workdir) in work_dir_map.iter() {
                     app = app.service(
@@ -566,6 +806,13 @@ async fn run() -> crate::errors::Result<()> {
                             .app_data(web::Data::new(WorkDirPrefix(path.clone())))
                             .service(info_handler)
                             .service(random_handler)
+                            .service(latest_handler)
+                            .service(latest_page_handler)
+                            .service(oldest_handler)
+                            .service(oldest_page_handler)
+                            .service(root_redirect)
+                            .service(tag_handler)
+                            .service(tag_page_handler)
                             .service(item_handler)
                             .service(item_redirect)
                             .service(Files::new("/assets", workdir.path.clone()).prefer_utf8(true)),
@@ -574,7 +821,7 @@ async fn run() -> crate::errors::Result<()> {
 
                 app
             })
-            .bind(("127.0.0.1", 8080))?
+            .bind((listen_address, 8080))?
             .run()
             .await?;
 
