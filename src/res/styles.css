@@ -37,6 +37,20 @@ body {
   margin: 2px;
   border: 1px solid yellow;
 
+  .no_thumbnail {
+    background: #333;
+    color: #666;
+    text-align: center;
+    width: 100%;
+    height: 200px;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-style: italic;
+    text-decoration: underline !important;
+  }
+
   .item_thumb_img {
     img {
       width: 100%;

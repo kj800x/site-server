@@ -10,13 +10,13 @@ use actix_web::{Either, HttpResponse};
 use actix_web_opentelemetry::{PrometheusMetricsHandler, RequestMetrics, RequestTracing};
 use chrono::{TimeZone, Utc};
 use clap::Parser;
-use indexmap::IndexMap;
 use maud::{html, Markup, Render};
 use opentelemetry::global;
 use opentelemetry_sdk::metrics::MeterProvider;
 use rand::seq::IteratorRandom;
 use site::CrawlItem;
-use std::{fs::File, io::Read, path::Path};
+use std::{collections::HashMap, fs::File, io::Read, path::Path};
+use urlencoding::{decode, encode};
 use workdir::WorkDir;
 
 mod collections;
@@ -31,7 +31,6 @@ mod workdir;
 struct Cli {
     #[command(subcommand)]
     command: Commands,
-    work_dir: String,
 }
 
 struct StartTime(i64);
@@ -39,7 +38,7 @@ struct WorkDirPrefix(String);
 
 #[derive(clap::Subcommand)]
 enum Commands {
-    Serve,
+    Serve { work_dirs: Vec<String> },
 }
 
 /// Links to a CSS stylesheet at the given path.
@@ -227,8 +226,14 @@ fn paginator(page: usize, total: usize, per_page: usize, prefix: &str) -> Markup
 
 fn item_thumbnail(item: &CrawlItem, site: &str) -> Markup {
     html! {
-        a.item_thumb_container href=(format!("/{}/item/{}/{}", site, item.key, item.flat_files().keys().into_iter().next().unwrap_or(&"".to_string()))) {
-            .item_thumb_img {img src=(format!("/{}/assets/{}", site, item.thumbnail_path().unwrap_or("404".to_string()))) {}}
+        a.item_thumb_container href=(format!("/{}/item/{}/{}", site, encode(&item.key), encode(item.flat_files().keys().into_iter().next().unwrap_or(&"".to_string())))) {
+            .item_thumb_img {
+                @if let Some(thumb) = item.thumbnail_path() {
+                    img src=(format!("/{}/assets/{}", site, thumb)) {}
+                } @else {
+                    p.no_thumbnail { "No thumbnail" }
+                }
+            }
             .item_thumb_tags {
                 @for tag in &item.tags {
                     @match tag {
@@ -239,6 +244,26 @@ fn item_thumbnail(item: &CrawlItem, site: &str) -> Markup {
             }
         }
     }
+}
+
+#[get("/")]
+async fn root_index_handler(
+    site: web::Data<Vec<WorkDir>>,
+) -> Result<impl Responder, actix_web::Error> {
+    return Ok(html! {
+        (Css("/res/styles.css"))
+        h1.page_title { "Loaded sites" }
+        ul.site_list {
+            @for site in site.iter() {
+                li {
+                    a.site_link href=(format!("/{}/latest", site.config.slug)) { (site.config.label) }
+                    " ("
+                    a.site_link href=(format!("/{}/info", site.config.slug)) { "info" }
+                    ")"
+                }
+            }
+        }
+    });
 }
 
 #[get("/random")]
@@ -384,13 +409,13 @@ async fn generic_tag_handler(
     return Ok(html! {
         (Css("/res/styles.css"))
         h1.page_title { "Items tagged \"" (tag) "\"" }
-        ( paginator(page, filtered_items_len, 40, &format!("/{}/tag/{}", &site.0, tag)) )
+        ( paginator(page, filtered_items_len, 40, &format!("/{}/tag/{}", &site.0, encode(&tag))) )
         .item_thumb_grid {
             @for item in &items {
                 ( item_thumbnail(&item, &site.0) )
             }
         }
-        ( paginator(page, filtered_items_len, 40, &format!("/{}/tag/{}", &site.0, tag)) )
+        ( paginator(page, filtered_items_len, 40, &format!("/{}/tag/{}", &site.0, encode(&tag))) )
     });
 }
 
@@ -401,7 +426,7 @@ async fn tag_page_handler(
     path: web::Path<(String, usize)>,
 ) -> Result<impl Responder, actix_web::Error> {
     let (tag, page) = path.into_inner();
-    generic_tag_handler(site, workdir, tag, page).await
+    generic_tag_handler(site, workdir, decode(&tag).unwrap().into_owned(), page).await
 }
 
 #[get("/tag/{tag}")]
@@ -411,7 +436,41 @@ async fn tag_handler(
     path: web::Path<String>,
 ) -> Result<impl Responder, actix_web::Error> {
     let tag = path.into_inner();
-    generic_tag_handler(site, workdir, tag, 1).await
+    generic_tag_handler(site, workdir, decode(&tag).unwrap().into_owned(), 1).await
+}
+
+#[get("/tags")]
+async fn tags_handler(
+    site: web::Data<WorkDirPrefix>,
+    workdir: web::Data<WorkDir>,
+) -> Result<impl Responder, actix_web::Error> {
+    let mut tags: HashMap<String, usize> = HashMap::new();
+
+    for item in workdir.crawled.items.values() {
+        for tag in &item.tags {
+            let tag = match tag {
+                site::CrawlTag::Simple(x) => x,
+                site::CrawlTag::Detailed { value, .. } => value,
+            };
+
+            *tags.entry(tag.clone()).or_insert(0) += 1;
+        }
+    }
+
+    let mut tags_vec: Vec<_> = tags.into_iter().collect();
+    tags_vec.sort_by(|a, b| b.1.cmp(&a.1));
+
+    return Ok(html! {
+        (Css("/res/styles.css"))
+        h1.page_title { "Site tags" }
+        ul.tag_list {
+            @for tag in &tags_vec {
+                li {
+                    a.tag_link href=(format!("/{}/tag/{}", site.0, encode(&tag.0))) { (tag.0) " (" (tag.1) ")" }
+                }
+            }
+        }
+    });
 }
 
 #[get("")]
@@ -427,7 +486,10 @@ async fn item_redirect(
     site: web::Data<WorkDirPrefix>,
     workdir: web::Data<WorkDir>,
 ) -> Result<Either<impl Responder, HttpResponse>, actix_web::Error> {
-    let item = workdir.crawled.items.get(path.as_str());
+    let item = workdir
+        .crawled
+        .items
+        .get(&decode(&path).unwrap().into_owned());
 
     let Some(item) = item else {
         return Ok(Either::Left(html! {
@@ -451,19 +513,27 @@ async fn item_redirect(
         actix_web::HttpResponse::SeeOther()
             .append_header((
                 "Location",
-                format!("/{}/item/{}/{}", site.0, item.key, file_key),
+                format!(
+                    "/{}/item/{}/{}",
+                    site.0,
+                    encode(&item.key),
+                    encode(file_key)
+                ),
             ))
             .finish(),
     ))
 }
 
-#[get("/item/{item}/{file:.*}")]
+#[get("/item/{item}/{file}")]
 async fn item_handler(
     path: web::Path<(String, String)>,
     site: web::Data<WorkDirPrefix>,
     workdir: web::Data<WorkDir>,
 ) -> Result<impl Responder, actix_web::Error> {
-    let item = workdir.crawled.items.get(path.0.as_str());
+    let item = workdir
+        .crawled
+        .items
+        .get(&decode(path.0.as_str()).unwrap().into_owned());
 
     let Some(item) = item else {
         return Ok(html! {
@@ -474,21 +544,13 @@ async fn item_handler(
     };
 
     let files = item.flat_files();
-    let file = files.get(path.1.as_str());
-
-    let Some(file) = file else {
-        return Ok(html! {
-            (Css("/res/styles.css"))
-            h1 { "Hello!" }
-            p { "File not found" }
-        });
-    };
+    let file = files.get(&decode(path.1.as_str()).unwrap().into_owned());
 
     // Find filename of next and previous file
     let file_keys = files.keys().collect::<Vec<&String>>();
-    let file_index = file_keys.iter().position(|x| **x == path.1).unwrap();
-    let prev_file = file_keys.get(file_index.wrapping_sub(1)).map(|x| *x);
-    let next_file = file_keys.get(file_index.wrapping_add(1)).map(|x| *x);
+    let file_index = file_keys.iter().position(|x| **x == path.1);
+    let prev_file = file_index.and_then(|index| file_keys.get(index.wrapping_sub(1)).map(|x| *x));
+    let next_file = file_index.and_then(|index| file_keys.get(index.wrapping_add(1)).map(|x| *x));
 
     return Ok(html! {
         (Css("/res/styles.css"))
@@ -522,7 +584,7 @@ async fn item_handler(
                         @if *file.0 == path.1 {
                             span.file_link { (file.0) }
                         } @else {
-                            a.file_link href=(format!("/{}/item/{}/{}", site.0, item.key, file.0)) "data-is-prev"[prev_file.is_some_and(|x| x == file.0)] "data-is-next"[next_file.is_some_and(|x| x == file.0)] { (file.0) }
+                            a.file_link href=(format!("/{}/item/{}/{}", site.0, encode(&item.key), encode(file.0))) "data-is-prev"[prev_file.is_some_and(|x| x == file.0)] "data-is-next"[next_file.is_some_and(|x| x == file.0)] { (file.0) }
                         }
                     }
                 }
@@ -534,34 +596,44 @@ async fn item_handler(
                 dd {
                     @for tag in &item.tags {
                         @match tag {
-                            site::CrawlTag::Simple(x) => a.tag href=(format!("/{}/tag/{}", site.0, x)) { (x) },
-                            site::CrawlTag::Detailed { value, .. } => a.tag href=(format!("/{}/tag/{}", site.0, value)) { (value) },
+                            site::CrawlTag::Simple(x) => a.tag href=(format!("/{}/tag/{}", site.0, encode(x))) { (x) },
+                            site::CrawlTag::Detailed { value, .. } => a.tag href=(format!("/{}/tag/{}", site.0, encode(value))) { (value) },
                         }
                     }
                 }
             }
             .item_detail_page_file {
                 @match file {
-                    site::FileCrawlType::Image { filename, downloaded, .. } => {
-                        @if *downloaded {
-                            img src=(format!("/{}/assets/{}", site.0, filename)) {}
-                        } @else {
-                            p { "Image not downloaded" }
-                        }
+                    None => {
+                        p.file_not_found { "File not found" }
                     }
-                    site::FileCrawlType::Video { filename, downloaded, .. } => {
-                        @if *downloaded {
-                            video autoplay controls {
-                                source src=(format!("/{}/assets/{}", site.0, filename)) {}
+                    Some(file) => {
+                        @match file {
+                            site::FileCrawlType::Image { filename, downloaded, .. } => {
+                                @if *downloaded {
+                                    img src=(format!("/{}/assets/{}", site.0, filename)) {}
+                                } @else {
+                                    p { "Image not downloaded" }
+                                }
                             }
-                        } @else {
-                            p { "Video not downloaded" }
+                            site::FileCrawlType::Video { filename, downloaded, .. } => {
+                                @if *downloaded {
+                                    // Replace the extension with mp4
+                                    // When we download, we convert everything to mp4
+                                    @let coerced_filename = filename.split('.').next().unwrap_or("").to_string() + ".mp4";
+                                    video autoplay controls {
+                                        source src=(format!("/{}/assets/{}", site.0, coerced_filename)) {}
+                                    }
+                                } @else {
+                                    p { "Video not downloaded" }
+                                }
+                            }
+                            site::FileCrawlType::Intermediate { .. } => {
+                                p { "Intermediate file, no preview available" }
+                            }
+                            _ => {}
                         }
                     }
-                    site::FileCrawlType::Intermediate { .. } => {
-                        p { "Intermediate file, no preview available" }
-                    }
-                    _ => {}
                 }
             }
         }
@@ -748,33 +820,27 @@ async fn run() -> crate::errors::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
     let cli = Cli::parse();
-    println!("Loading WorkDir...");
-    let work_dir = WorkDir::new(cli.work_dir)?;
-
-    let work_dir_path = work_dir.path.clone();
-    let mut work_dir_map = IndexMap::new();
-    work_dir_map.insert(
-        work_dir_path
-            .clone()
-            .file_name()
-            .unwrap()
-            .to_string_lossy()
-            .to_string(),
-        work_dir,
-    );
-
-    let registry = prometheus::Registry::new();
-    let exporter = opentelemetry_prometheus::exporter()
-        .with_registry(registry.clone())
-        .build()
-        .unwrap();
-    let provider = MeterProvider::builder().with_reader(exporter).build();
-    global::set_meter_provider(provider);
-
-    let listen_address = std::env::var("LISTEN_ADDRESS").unwrap_or("127.0.0.1".to_owned());
 
     match &cli.command {
-        Commands::Serve {} => {
+        Commands::Serve { work_dirs } => {
+            println!("Loading WorkDirs...");
+            let mut work_dirs_vec = vec![];
+            for work_dir in work_dirs.into_iter() {
+                println!("Loading WorkDir: {}", work_dir);
+                let work_dir = WorkDir::new(work_dir.to_string())?;
+                work_dirs_vec.push(work_dir);
+            }
+
+            let registry = prometheus::Registry::new();
+            let exporter = opentelemetry_prometheus::exporter()
+                .with_registry(registry.clone())
+                .build()
+                .unwrap();
+            let provider = MeterProvider::builder().with_reader(exporter).build();
+            global::set_meter_provider(provider);
+
+            let listen_address = std::env::var("LISTEN_ADDRESS").unwrap_or("127.0.0.1".to_owned());
+
             log::info!("Starting HTTP server at http://{}:8080", listen_address);
 
             HttpServer::new(move || {
@@ -793,17 +859,18 @@ async fn run() -> crate::errors::Result<()> {
                         .cookie_secure(false)
                         .build(),
                     )
-                    .app_data(web::Data::new(work_dir_map.clone()))
+                    .app_data(web::Data::new(work_dirs_vec.clone()))
                     .app_data(web::Data::new(StartTime(Utc::now().timestamp_millis())))
                     .wrap(middleware::Logger::default())
                     .service(serve_static_file!("styles.css"))
-                    .service(serve_static_file!("detail_page.js"));
+                    .service(serve_static_file!("detail_page.js"))
+                    .service(root_index_handler);
 
-                for (path, workdir) in work_dir_map.iter() {
+                for workdir in work_dirs_vec.iter() {
                     app = app.service(
-                        web::scope(path)
+                        web::scope(&workdir.config.slug)
                             .app_data(web::Data::new(workdir.clone()))
-                            .app_data(web::Data::new(WorkDirPrefix(path.clone())))
+                            .app_data(web::Data::new(WorkDirPrefix(workdir.config.slug.clone())))
                             .service(info_handler)
                             .service(random_handler)
                             .service(latest_handler)
@@ -811,6 +878,7 @@ async fn run() -> crate::errors::Result<()> {
                             .service(oldest_handler)
                             .service(oldest_page_handler)
                             .service(root_redirect)
+                            .service(tags_handler)
                             .service(tag_handler)
                             .service(tag_page_handler)
                             .service(item_handler)

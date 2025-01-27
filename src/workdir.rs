@@ -4,7 +4,7 @@ use std::{
     path::Path,
 };
 
-use crate::errors::*;
+use crate::{errors::*, site::FileCrawlType};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
@@ -16,6 +16,8 @@ use crate::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub site: String,
+    pub slug: String,
+    pub label: String,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -31,6 +33,17 @@ impl SiteItems {
     pub fn sort(&mut self) {
         self.items
             .sort_by(|_k1, v1, _k2, v2| v2.source_published.cmp(&v1.source_published));
+    }
+
+    pub fn remove_items_without_files(&mut self) {
+        self.items.retain(|_k, v| {
+            v.files.values().any(|x| match x {
+                FileCrawlType::Image { downloaded, .. } => *downloaded,
+                FileCrawlType::Video { downloaded, .. } => *downloaded,
+                FileCrawlType::Intermediate { downloaded, .. } => *downloaded,
+                FileCrawlType::Text { .. } => true,
+            })
+        });
     }
 }
 
@@ -84,6 +97,9 @@ impl WorkDir {
         };
 
         crawled.sort();
+        if std::env::var("ALLOW_NO_FILES").is_err() {
+            crawled.remove_items_without_files();
+        }
 
         Ok(WorkDir {
             path: path.into(),
