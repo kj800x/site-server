@@ -7,6 +7,9 @@ use actix_web::{
     App, HttpServer, Responder,
 };
 use actix_web::{Either, HttpResponse};
+use actix_web_httpauth::extractors::basic::{BasicAuth, Config};
+use actix_web_httpauth::extractors::AuthenticationError;
+use actix_web_httpauth::middleware::HttpAuthentication;
 use actix_web_opentelemetry::{PrometheusMetricsHandler, RequestMetrics, RequestTracing};
 use chrono::{TimeZone, Utc};
 use clap::Parser;
@@ -816,6 +819,35 @@ async fn item_handler(
 //     HttpResponse::Ok().body("Logout success!")
 // }
 
+async fn validator(
+    req: actix_web::dev::ServiceRequest,
+    credentials: BasicAuth,
+) -> Result<actix_web::dev::ServiceRequest, (actix_web::Error, actix_web::dev::ServiceRequest)> {
+    // Get auth credentials from environment
+    let expected_username = std::env::var("BASIC_AUTH_USERNAME").unwrap_or_default();
+    let expected_password = std::env::var("BASIC_AUTH_PASSWORD").unwrap_or_default();
+
+    // If auth environment variables are not set, don't enforce authentication
+    if expected_username.is_empty() || expected_password.is_empty() {
+        return Ok(req);
+    }
+
+    // Check if credentials match
+    let password = credentials.password().unwrap_or_default();
+    if credentials.user_id() == expected_username && password == expected_password {
+        Ok(req)
+    } else {
+        // Return 401 Unauthorized with proper WWW-Authenticate header
+        let config = req
+            .app_data::<Config>()
+            .cloned()
+            .unwrap_or_default()
+            .realm("Site Server");
+
+        Err((AuthenticationError::from(config).into(), req))
+    }
+}
+
 async fn run() -> crate::errors::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
@@ -827,7 +859,7 @@ async fn run() -> crate::errors::Result<()> {
             let mut work_dirs_vec = vec![];
             for work_dir in work_dirs.into_iter() {
                 println!("Loading WorkDir: {}", work_dir);
-                let work_dir = WorkDir::new(work_dir.to_string())?;
+                let work_dir = WorkDir::new(work_dir.to_string()).expect("Failed to load WorkDir");
                 work_dirs_vec.push(work_dir);
             }
 
@@ -844,7 +876,10 @@ async fn run() -> crate::errors::Result<()> {
             log::info!("Starting HTTP server at http://{}:8080", listen_address);
 
             HttpServer::new(move || {
+                let auth = HttpAuthentication::basic(validator);
+
                 let mut app = App::new()
+                    .wrap(auth) // Guard all routes with HTTP Basic Auth
                     .wrap(RequestTracing::new())
                     .wrap(RequestMetrics::default())
                     .route(
