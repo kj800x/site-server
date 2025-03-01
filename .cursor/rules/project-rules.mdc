@@ -1,0 +1,101 @@
+---
+description: General understanding of the project
+globs: *.rs
+---
+# Site Server - Project Rules
+
+## Project Overview
+`site-server` is a Rust web application built to serve and manage collections of crawled content, primarily focused on displaying media content (images, videos) with associated metadata.
+
+## Technology Stack
+
+### Backend Framework
+- **Actix Web (v4)**: The primary web framework used for handling HTTP requests, routing, and serving content.
+- **SQLite**: Used with r2d2 connection pooling for database operations.
+- **Maud**: Template engine for HTML generation.
+
+### Frontend
+- Custom HTML/CSS with Maud templates used for server-side rendering.
+- No dedicated JavaScript framework is used; UI is primarily server-rendered.
+
+### Observability
+- OpenTelemetry with Prometheus metrics integration for monitoring.
+
+## Code Organization
+
+### Module Structure
+- **main.rs**: Contains application setup, route handlers, and server configuration.
+- **site.rs**: Defines the domain models for crawled content (CrawlItem, FileCrawlType, etc.).
+- **workdir.rs**: Manages the working directory and configuration for the application.
+- **collections.rs**: Provides collection-related utilities and traits.
+- **errors.rs**: Error handling functionality using the error-chain crate.
+- **serde.rs**: Custom serialization/deserialization functions.
+
+### Data Models
+- **CrawlItem**: Represents a piece of content with metadata, tags, and associated files.
+- **FileCrawlType**: Enum representing different types of files (Image, Video, Intermediate, Text).
+- **WorkDir**: Represents a working directory with configuration and crawled items.
+
+## Coding Patterns and Conventions
+
+### Error Handling
+- Uses the `error-chain` crate for error propagation.
+- Methods typically return `Result<T, Error>` for operations that can fail.
+
+### API Design
+- RESTful routes for content navigation.
+- HTML responses for web UI, with some JSON endpoints.
+
+### Code Style
+- Follows standard Rust naming conventions:
+  - Snake case for functions and variables
+  - CamelCase for types and enums
+  - Modules are organized by domain responsibility
+- Uses Rust 2021 edition features
+- Makes extensive use of Rust's type system, particularly enums with variants for different data types
+
+### Serialization
+- Uses serde for serialization/deserialization
+- Custom serialization/deserialization functions for complex data structures
+- IndexMap is used extensively for ordered map operations
+
+## Development Patterns
+
+### Organization
+- Modular code organization with clear separation of concerns
+- Route handlers are grouped by functionality in main.rs
+- Models are defined in their respective domain modules
+
+### UI Components
+- UI components are implemented as Rust structs that implement the Render trait from Maud
+- Page layout is consistent across different views
+
+### Route Structure
+- Routes follow a logical hierarchy with clean URLs
+- Support for pagination in list views
+- API endpoints for data and file serving
+
+## Future Roadmap (from TODO.md)
+- Improved text and description support
+- Additional view implementations (Reddit-style, blog style, updates style)
+- Video transcoding improvements
+- URL encoding handling improvements
+- Migration to DuckDB for faster startup
+
+## Best Practices to Follow
+
+1. **Maintain Type Safety**: Continue using Rust's type system for strong guarantees.
+2. **Error Handling**: Follow the established pattern of using Result types and error-chain.
+3. **Consistent Naming**: Follow the established snake_case for functions and variables, CamelCase for types.
+4. **HTML Generation**: Use Maud templates consistently for HTML generation.
+5. **Serialization**: Follow the established patterns for serde serialization/deserialization.
+6. **Route Organization**: Group related routes together in main.rs.
+7. **Modular Design**: Keep domain logic in appropriate modules.
+
+## Anti-patterns to Avoid
+
+1. **Mixing HTML Generation Styles**: Don't mix raw string HTML with Maud templates.
+2. **Inconsistent Error Handling**: Don't return Option where Result with proper error context is expected.
+3. **Tight Coupling**: Keep domain logic separate from web handling logic.
+4. **Type Conversion**: Avoid unnecessary type conversions and cloning.
+5. **Ignoring Errors**: Don't use .unwrap() or .expect() in production code paths.
