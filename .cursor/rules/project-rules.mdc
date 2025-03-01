@@ -14,6 +14,16 @@ globs: *.rs
 - **SQLite**: Used with r2d2 connection pooling for database operations.
 - **Maud**: Template engine for HTML generation.
 
+### Security
+- **HTTP Basic Authentication**: Implemented using `actix-web-httpauth`, controlled via environment variables:
+  - `BASIC_AUTH_USERNAME`: Username for authentication
+  - `BASIC_AUTH_PASSWORD`: Password for authentication
+  - When not set, authentication is disabled
+
+### Error Handling
+- **thiserror**: For defining application error types and handling error propagation
+- Custom `ResultExt` trait providing context-adding capability through the `.context()` method
+
 ### Frontend
 - Custom HTML/CSS with Maud templates used for server-side rendering.
 - No dedicated JavaScript framework is used; UI is primarily server-rendered.
@@ -24,23 +34,24 @@ globs: *.rs
 ## Code Organization
 
 ### Module Structure
-- **main.rs**: Contains application setup, route handlers, and server configuration.
+- **main.rs**: Contains application setup, route handlers, server configuration, and authentication setup.
 - **site.rs**: Defines the domain models for crawled content (CrawlItem, FileCrawlType, etc.).
 - **workdir.rs**: Manages the working directory and configuration for the application.
 - **collections.rs**: Provides collection-related utilities and traits.
-- **errors.rs**: Error handling functionality using the error-chain crate.
+- **errors.rs**: Error handling functionality using the thiserror crate and custom context extension.
 - **serde.rs**: Custom serialization/deserialization functions.
-
-### Data Models
-- **CrawlItem**: Represents a piece of content with metadata, tags, and associated files.
-- **FileCrawlType**: Enum representing different types of files (Image, Video, Intermediate, Text).
-- **WorkDir**: Represents a working directory with configuration and crawled items.
 
 ## Coding Patterns and Conventions
 
 ### Error Handling
-- Uses the `error-chain` crate for error propagation.
-- Methods typically return `Result<T, Error>` for operations that can fail.
+- Uses the `thiserror` crate for defining error types
+- The `ResultExt` trait extends `Result` with a `.context()` method for adding context information to errors
+- Methods typically return `Result<T, Error>` for operations that can fail
+
+### Authentication
+- HTTP Basic Auth guards all routes including static assets
+- Authentication is optional, controlled via environment variables
+- When authentication credentials are not set, the server operates in open mode
 
 ### API Design
 - RESTful routes for content navigation.
@@ -75,6 +86,14 @@ globs: *.rs
 - Support for pagination in list views
 - API endpoints for data and file serving
 
+## Deployment
+
+### Environment Variables
+- `BASIC_AUTH_USERNAME`: Username for HTTP Basic Auth
+- `BASIC_AUTH_PASSWORD`: Password for HTTP Basic Auth
+- `LISTEN_ADDRESS`: IP address to bind the server (defaults to 127.0.0.1)
+- `ALLOW_NO_FILES`: If set, items without downloaded files are included in listings
+
 ## Future Roadmap (from TODO.md)
 - Improved text and description support
 - Additional view implementations (Reddit-style, blog style, updates style)
@@ -85,12 +104,13 @@ globs: *.rs
 ## Best Practices to Follow
 
 1. **Maintain Type Safety**: Continue using Rust's type system for strong guarantees.
-2. **Error Handling**: Follow the established pattern of using Result types and error-chain.
+2. **Error Handling**: Use the `.context()` method for adding context to errors instead of `.unwrap()` or `.expect()`.
 3. **Consistent Naming**: Follow the established snake_case for functions and variables, CamelCase for types.
 4. **HTML Generation**: Use Maud templates consistently for HTML generation.
-5. **Serialization**: Follow the established patterns for serde serialization/deserialization.
-6. **Route Organization**: Group related routes together in main.rs.
-7. **Modular Design**: Keep domain logic in appropriate modules.
+5. **Authentication**: Configure authentication for production environments.
+6. **Serialization**: Follow the established patterns for serde serialization/deserialization.
+7. **Route Organization**: Group related routes together in main.rs.
+8. **Modular Design**: Keep domain logic in appropriate modules.
 
 ## Anti-patterns to Avoid
 

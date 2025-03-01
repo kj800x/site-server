@@ -20,7 +20,7 @@ log = "0.4"
 actix-session = { version = "0.8.0", features = ["cookie-session"] }
 pwhash = "1"
 indexmap = { version = "2.2.5", features = ["serde"] }
-error-chain = "0.12.4"
+thiserror = "1.0"
 maud = { version = "*", features = ["actix-web"] }
 urlencoding = { version = "2.1.3" }
 # metrics
