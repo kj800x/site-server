@@ -73,6 +73,7 @@ pub struct WorkDir {
     pub path: Box<Path>,
     pub config: Config,
     pub crawled: SiteItems,
+    pub last_seen_modified: u64,
 }
 
 #[allow(dead_code)]
@@ -96,6 +97,22 @@ impl WorkDir {
             }
         };
 
+        let crawled_path = path.join("crawled.json");
+        let last_seen_modified = if crawled_path.exists() {
+            let metadata = std::fs::metadata(crawled_path)
+                .context("Unable to get metadata for crawled.json")
+                .unwrap();
+            metadata
+                .modified()
+                .context("Unable to get modified time for crawled.json")
+                .unwrap()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+        } else {
+            0
+        };
+
         crawled.sort();
         if std::env::var("ALLOW_NO_FILES").is_err() {
             crawled.remove_items_without_files();
@@ -105,6 +122,7 @@ impl WorkDir {
             path: path.into(),
             crawled,
             config,
+            last_seen_modified,
         })
     }
 }

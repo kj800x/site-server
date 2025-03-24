@@ -18,7 +18,15 @@ use opentelemetry::global;
 use opentelemetry_sdk::metrics::MeterProvider;
 use rand::seq::IteratorRandom;
 use site::CrawlItem;
-use std::{collections::HashMap, fs::File, io::Read, path::Path};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::Read,
+    path::Path,
+    thread::{self},
+    time::Duration,
+};
+use thread_safe_work_dir::ThreadSafeWorkDir;
 use urlencoding::{decode, encode};
 use workdir::WorkDir;
 
@@ -26,6 +34,7 @@ mod collections;
 mod errors;
 mod serde;
 mod site;
+mod thread_safe_work_dir;
 mod workdir;
 
 #[derive(Parser)]
@@ -154,9 +163,21 @@ fn date_time_element(timestamp: Option<u64>) -> Markup {
 #[get("/info")]
 async fn info_handler(
     site: web::Data<WorkDirPrefix>,
-    workdir: web::Data<WorkDir>,
+    workdir: web::Data<ThreadSafeWorkDir>,
     start_time: web::Data<StartTime>,
 ) -> Result<impl Responder, actix_web::Error> {
+    // 503 if workdir is write locked
+    let workdir_data = workdir.into_inner();
+    let workdir_lock = workdir_data.work_dir.try_read();
+    let workdir = match workdir_lock {
+        Ok(x) => x,
+        Err(_) => {
+            return Err(actix_web::Error::from(
+                actix_web::error::ErrorServiceUnavailable("Work directory is locked"),
+            ));
+        }
+    };
+
     let latest_update = workdir.crawled.items.values().map(|x| x.last_seen).max();
     let first_update = workdir.crawled.items.values().map(|x| x.first_seen).min();
 
@@ -272,8 +293,20 @@ async fn root_index_handler(
 #[get("/random")]
 async fn random_handler(
     site: web::Data<WorkDirPrefix>,
-    workdir: web::Data<WorkDir>,
+    workdir: web::Data<ThreadSafeWorkDir>,
 ) -> Result<impl Responder, actix_web::Error> {
+    // 503 if workdir is write locked
+    let workdir_data = workdir.into_inner();
+    let workdir_lock = workdir_data.work_dir.try_read();
+    let workdir = match workdir_lock {
+        Ok(x) => x,
+        Err(_) => {
+            return Err(actix_web::Error::from(
+                actix_web::error::ErrorServiceUnavailable("Work directory is locked"),
+            ));
+        }
+    };
+
     let rng = &mut rand::thread_rng();
     let items = workdir
         .crawled
@@ -298,9 +331,21 @@ async fn random_handler(
 
 async fn generic_latest_handler(
     site: web::Data<WorkDirPrefix>,
-    workdir: web::Data<WorkDir>,
+    workdir: web::Data<ThreadSafeWorkDir>,
     path: web::Path<usize>,
 ) -> Result<impl Responder, actix_web::Error> {
+    // 503 if workdir is write locked
+    let workdir_data = workdir.into_inner();
+    let workdir_lock = workdir_data.work_dir.try_read();
+    let workdir = match workdir_lock {
+        Ok(x) => x,
+        Err(_) => {
+            return Err(actix_web::Error::from(
+                actix_web::error::ErrorServiceUnavailable("Work directory is locked"),
+            ));
+        }
+    };
+
     let page = path.into_inner();
     let items: Vec<&CrawlItem> = workdir
         .crawled
@@ -327,7 +372,7 @@ async fn generic_latest_handler(
 #[get("/latest/{page}")]
 async fn latest_page_handler(
     site: web::Data<WorkDirPrefix>,
-    workdir: web::Data<WorkDir>,
+    workdir: web::Data<ThreadSafeWorkDir>,
     path: web::Path<usize>,
 ) -> Result<impl Responder, actix_web::Error> {
     generic_latest_handler(site, workdir, path).await
@@ -336,16 +381,28 @@ async fn latest_page_handler(
 #[get("/latest")]
 async fn latest_handler(
     site: web::Data<WorkDirPrefix>,
-    workdir: web::Data<WorkDir>,
+    workdir: web::Data<ThreadSafeWorkDir>,
 ) -> Result<impl Responder, actix_web::Error> {
     generic_latest_handler(site, workdir, web::Path::from(1)).await
 }
 
 async fn generic_oldest_handler(
     site: web::Data<WorkDirPrefix>,
-    workdir: web::Data<WorkDir>,
+    workdir: web::Data<ThreadSafeWorkDir>,
     path: web::Path<usize>,
 ) -> Result<impl Responder, actix_web::Error> {
+    // 503 if workdir is write locked
+    let workdir_data = workdir.into_inner();
+    let workdir_lock = workdir_data.work_dir.try_read();
+    let workdir = match workdir_lock {
+        Ok(x) => x,
+        Err(_) => {
+            return Err(actix_web::Error::from(
+                actix_web::error::ErrorServiceUnavailable("Work directory is locked"),
+            ));
+        }
+    };
+
     let page = path.into_inner();
     let items: Vec<&CrawlItem> = workdir
         .crawled
@@ -373,7 +430,7 @@ async fn generic_oldest_handler(
 #[get("/oldest/{page}")]
 async fn oldest_page_handler(
     site: web::Data<WorkDirPrefix>,
-    workdir: web::Data<WorkDir>,
+    workdir: web::Data<ThreadSafeWorkDir>,
     path: web::Path<usize>,
 ) -> Result<impl Responder, actix_web::Error> {
     generic_oldest_handler(site, workdir, path).await
@@ -382,17 +439,29 @@ async fn oldest_page_handler(
 #[get("/oldest")]
 async fn oldest_handler(
     site: web::Data<WorkDirPrefix>,
-    workdir: web::Data<WorkDir>,
+    workdir: web::Data<ThreadSafeWorkDir>,
 ) -> Result<impl Responder, actix_web::Error> {
     generic_oldest_handler(site, workdir, web::Path::from(1)).await
 }
 
 async fn generic_tag_handler(
     site: web::Data<WorkDirPrefix>,
-    workdir: web::Data<WorkDir>,
+    workdir: web::Data<ThreadSafeWorkDir>,
     tag: String,
     page: usize,
 ) -> Result<impl Responder, actix_web::Error> {
+    // 503 if workdir is write locked
+    let workdir_data = workdir.into_inner();
+    let workdir_lock = workdir_data.work_dir.try_read();
+    let workdir = match workdir_lock {
+        Ok(x) => x,
+        Err(_) => {
+            return Err(actix_web::Error::from(
+                actix_web::error::ErrorServiceUnavailable("Work directory is locked"),
+            ));
+        }
+    };
+
     let filtered_items = workdir
         .crawled
         .items
@@ -425,7 +494,7 @@ async fn generic_tag_handler(
 #[get("/tag/{tag}/{page}")]
 async fn tag_page_handler(
     site: web::Data<WorkDirPrefix>,
-    workdir: web::Data<WorkDir>,
+    workdir: web::Data<ThreadSafeWorkDir>,
     path: web::Path<(String, usize)>,
 ) -> Result<impl Responder, actix_web::Error> {
     let (tag, page) = path.into_inner();
@@ -435,7 +504,7 @@ async fn tag_page_handler(
 #[get("/tag/{tag}")]
 async fn tag_handler(
     site: web::Data<WorkDirPrefix>,
-    workdir: web::Data<WorkDir>,
+    workdir: web::Data<ThreadSafeWorkDir>,
     path: web::Path<String>,
 ) -> Result<impl Responder, actix_web::Error> {
     let tag = path.into_inner();
@@ -445,8 +514,20 @@ async fn tag_handler(
 #[get("/tags")]
 async fn tags_handler(
     site: web::Data<WorkDirPrefix>,
-    workdir: web::Data<WorkDir>,
+    workdir: web::Data<ThreadSafeWorkDir>,
 ) -> Result<impl Responder, actix_web::Error> {
+    // 503 if workdir is write locked
+    let workdir_data = workdir.into_inner();
+    let workdir_lock = workdir_data.work_dir.try_read();
+    let workdir = match workdir_lock {
+        Ok(x) => x,
+        Err(_) => {
+            return Err(actix_web::Error::from(
+                actix_web::error::ErrorServiceUnavailable("Work directory is locked"),
+            ));
+        }
+    };
+
     let mut tags: HashMap<String, usize> = HashMap::new();
 
     for item in workdir.crawled.items.values() {
@@ -487,8 +568,20 @@ async fn root_redirect(site: web::Data<WorkDirPrefix>) -> Result<HttpResponse, a
 async fn item_redirect(
     path: web::Path<String>,
     site: web::Data<WorkDirPrefix>,
-    workdir: web::Data<WorkDir>,
+    workdir: web::Data<ThreadSafeWorkDir>,
 ) -> Result<Either<impl Responder, HttpResponse>, actix_web::Error> {
+    // 503 if workdir is write locked
+    let workdir_data = workdir.into_inner();
+    let workdir_lock = workdir_data.work_dir.try_read();
+    let workdir = match workdir_lock {
+        Ok(x) => x,
+        Err(_) => {
+            return Err(actix_web::Error::from(
+                actix_web::error::ErrorServiceUnavailable("Work directory is locked"),
+            ));
+        }
+    };
+
     let item = workdir
         .crawled
         .items
@@ -531,8 +624,20 @@ async fn item_redirect(
 async fn item_handler(
     path: web::Path<(String, String)>,
     site: web::Data<WorkDirPrefix>,
-    workdir: web::Data<WorkDir>,
+    workdir: web::Data<ThreadSafeWorkDir>,
 ) -> Result<impl Responder, actix_web::Error> {
+    // 503 if workdir is write locked
+    let workdir_data = workdir.into_inner();
+    let workdir_lock = workdir_data.work_dir.try_read();
+    let workdir = match workdir_lock {
+        Ok(x) => x,
+        Err(_) => {
+            return Err(actix_web::Error::from(
+                actix_web::error::ErrorServiceUnavailable("Work directory is locked"),
+            ));
+        }
+    };
+
     let item = workdir
         .crawled
         .items
@@ -860,7 +965,15 @@ async fn run() -> crate::errors::Result<()> {
             for work_dir in work_dirs.into_iter() {
                 println!("Loading WorkDir: {}", work_dir);
                 let work_dir = WorkDir::new(work_dir.to_string()).expect("Failed to load WorkDir");
-                work_dirs_vec.push(work_dir);
+                let threadsafe_work_dir = ThreadSafeWorkDir::new(work_dir);
+                let update_clone = threadsafe_work_dir.clone();
+                work_dirs_vec.push(threadsafe_work_dir);
+
+                // Spawn a thread to watch the workdir for changes
+                thread::spawn(move || loop {
+                    thread::sleep(Duration::from_secs(60));
+                    update_clone.check_for_updates();
+                });
             }
 
             let registry = prometheus::Registry::new();
@@ -903,9 +1016,11 @@ async fn run() -> crate::errors::Result<()> {
 
                 for workdir in work_dirs_vec.iter() {
                     app = app.service(
-                        web::scope(&workdir.config.slug)
+                        web::scope(&workdir.work_dir.read().unwrap().config.slug)
                             .app_data(web::Data::new(workdir.clone()))
-                            .app_data(web::Data::new(WorkDirPrefix(workdir.config.slug.clone())))
+                            .app_data(web::Data::new(WorkDirPrefix(
+                                workdir.work_dir.read().unwrap().config.slug.clone(),
+                            )))
                             .service(info_handler)
                             .service(random_handler)
                             .service(latest_handler)
@@ -918,7 +1033,13 @@ async fn run() -> crate::errors::Result<()> {
                             .service(tag_page_handler)
                             .service(item_handler)
                             .service(item_redirect)
-                            .service(Files::new("/assets", workdir.path.clone()).prefer_utf8(true)),
+                            .service(
+                                Files::new(
+                                    "/assets",
+                                    workdir.work_dir.read().unwrap().path.clone(),
+                                )
+                                .prefer_utf8(true),
+                            ),
                     );
                 }
 
