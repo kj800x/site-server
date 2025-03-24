@@ -272,13 +272,14 @@ fn item_thumbnail(item: &CrawlItem, site: &str) -> Markup {
 
 #[get("/")]
 async fn root_index_handler(
-    site: web::Data<Vec<WorkDir>>,
+    site: web::Data<Vec<ThreadSafeWorkDir>>,
 ) -> Result<impl Responder, actix_web::Error> {
     return Ok(html! {
         (Css("/res/styles.css"))
         h1.page_title { "Loaded sites" }
         ul.site_list {
             @for site in site.iter() {
+                @let site = site.work_dir.read().unwrap();
                 li {
                     a.site_link href=(format!("/{}/latest", site.config.slug)) { (site.config.label) }
                     " ("
