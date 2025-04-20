@@ -1,3 +1,4 @@
+use actix_files as fs;
 use actix_files::Files;
 use actix_session::{storage::CookieSessionStore, SessionMiddleware};
 use actix_web::{
@@ -11,15 +12,16 @@ use actix_web_httpauth::extractors::basic::{BasicAuth, Config};
 use actix_web_httpauth::extractors::AuthenticationError;
 use actix_web_httpauth::middleware::HttpAuthentication;
 use actix_web_opentelemetry::{PrometheusMetricsHandler, RequestMetrics, RequestTracing};
-use chrono::{TimeZone, Utc};
+use chrono::{Datelike, Month, TimeZone, Utc};
 use clap::Parser;
+use indexmap::IndexMap;
 use maud::{html, Markup, Render};
 use opentelemetry::global;
 use opentelemetry_sdk::metrics::MeterProvider;
 use rand::seq::IteratorRandom;
 use site::CrawlItem;
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fs::File,
     io::Read,
     path::Path,
@@ -160,6 +162,158 @@ fn date_time_element(timestamp: Option<u64>) -> Markup {
     }
 }
 
+// Helper function to get archive data
+fn get_archive_data(items: &IndexMap<String, CrawlItem>) -> BTreeMap<(i32, u8), usize> {
+    let mut archive: BTreeMap<(i32, u8), usize> = BTreeMap::new();
+
+    for item in items.values() {
+        let time = Utc
+            .timestamp_millis_opt(item.source_published as i64)
+            .unwrap();
+        let year = time.year();
+        let month = time.month() as u8;
+        *archive.entry((year, month)).or_insert(0) += 1;
+    }
+
+    archive
+}
+
+// Blogger style components
+fn blogger_layout(title: &str, content: Markup, site: &str, workdir: &WorkDir) -> Markup {
+    html! {
+        (Css("/res/styles.css"))
+        .blogger_layout {
+            header.blogger_header {
+                h1.blog_title { (workdir.config.label) }
+                nav.blog_nav {
+                    a href=(format!("/{}/blog", site)) { "Home" }
+                    a href=(format!("/{}/blog/tags", site)) { "Tags" }
+                    a href=(format!("/{}/blog/archive", site)) { "Archive" }
+                }
+            }
+            .blogger_content {
+                main.blog_main {
+                    @if !title.is_empty() {
+                        h2.page_title { (title) }
+                    }
+                    (content)
+                }
+                aside.blog_sidebar {
+                    (blogger_tags_card(site, workdir))
+                    (blogger_archive_card(site, workdir))
+                }
+            }
+        }
+    }
+}
+
+fn blogger_tags_card(site: &str, workdir: &WorkDir) -> Markup {
+    let mut tags: HashMap<String, usize> = HashMap::new();
+
+    for item in workdir.crawled.items.values() {
+        for tag in &item.tags {
+            let tag = match tag {
+                site::CrawlTag::Simple(x) => x,
+                site::CrawlTag::Detailed { value, .. } => value,
+            };
+            *tags.entry(tag.clone()).or_insert(0) += 1;
+        }
+    }
+
+    let mut tags_vec: Vec<_> = tags.into_iter().collect();
+    tags_vec.sort_by(|a, b| b.1.cmp(&a.1));
+
+    html! {
+        .blog_card.tags_card {
+            h3 { "Tags" }
+            ul.blog_tag_list {
+                @for (tag, count) in tags_vec {
+                    li {
+                        a href=(format!("/{}/blog/tag/{}", site, encode(&tag))) {
+                            span.tag_name { (tag) }
+                            span.tag_count { "(" (count) ")" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn blogger_archive_card(site: &str, workdir: &WorkDir) -> Markup {
+    let archive = get_archive_data(&workdir.crawled.items);
+
+    // Group by year first
+    let mut years: BTreeMap<i32, Vec<(u8, usize)>> = BTreeMap::new();
+    for ((year, month), count) in archive {
+        years.entry(year).or_default().push((month, count));
+    }
+
+    html! {
+        .blog_card.archive_card {
+            h3 { "Archive" }
+            ul.blog_archive_list {
+                @for (year, months) in years.iter().rev() {
+                    li.archive_year {
+                        span.year_name { (year) }
+                        ul.month_list {
+                            @for (month, count) in months.iter().rev() {
+                                li.archive_month {
+                                    a href=(format!("/{}/blog/archive/{}/{:02}", site, year, month)) {
+                                        span.month_name { (Month::try_from(*month).unwrap().name()) }
+                                        span.month_count { "(" (count) ")" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn blogger_post_card(item: &CrawlItem, site: &str) -> Markup {
+    let time = Utc
+        .timestamp_millis_opt(item.source_published as i64)
+        .unwrap();
+
+    html! {
+        article.blog_post_card {
+            header.post_header {
+                h3.post_title {
+                    a href=(format!("/{}/blog/post/{}", site, encode(&item.key))) { (item.title) }
+                }
+                .post_meta {
+                    time datetime=(time.to_rfc3339()) {
+                        (time.format("%B %d, %Y"))
+                    }
+                }
+            }
+            @if let Some(thumb) = item.thumbnail_path() {
+                .post_thumbnail {
+                    img src=(format!("/{}/assets/{}", site, thumb)) alt=(item.title) {}
+                }
+            }
+            .post_excerpt {
+                p { (item.description) }
+            }
+            footer.post_footer {
+                .post_tags {
+                    @for tag in &item.tags {
+                        @match tag {
+                            site::CrawlTag::Simple(x) =>
+                                a.post_tag href=(format!("/{}/blog/tag/{}", site, encode(x))) { (x) },
+                            site::CrawlTag::Detailed { value, .. } =>
+                                a.post_tag href=(format!("/{}/blog/tag/{}", site, encode(value))) { (value) },
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[get("/info")]
 async fn info_handler(
     site: web::Data<WorkDirPrefix>,
@@ -250,7 +404,7 @@ fn paginator(page: usize, total: usize, per_page: usize, prefix: &str) -> Markup
 
 fn item_thumbnail(item: &CrawlItem, site: &str) -> Markup {
     html! {
-        a.item_thumb_container href=(format!("/{}/item/{}/{}", site, encode(&item.key), encode(item.flat_files().keys().into_iter().next().unwrap_or(&"".to_string())))) {
+        a.item_thumb_container href=(format!("/{}/booru/item/{}/{}", site, encode(&item.key), encode(item.flat_files().keys().into_iter().next().unwrap_or(&"".to_string())))) {
             .item_thumb_img {
                 @if let Some(thumb) = item.thumbnail_path() {
                     img src=(format!("/{}/assets/{}", site, thumb)) {}
@@ -281,7 +435,7 @@ async fn root_index_handler(
             @for site in site.iter() {
                 @let site = site.work_dir.read().unwrap();
                 li {
-                    a.site_link href=(format!("/{}/latest", site.config.slug)) { (site.config.label) }
+                    a.site_link href=(format!("/{}/booru/latest", site.config.slug)) { (site.config.label) }
                     " ("
                     a.site_link href=(format!("/{}/info", site.config.slug)) { "info" }
                     ")"
@@ -325,7 +479,7 @@ async fn random_handler(
             }
         }
         .paginator {
-            a href=(format!("/{}/random", &site.0)) { "See more" }
+            a href=(format!("/{}/booru/random", &site.0)) { "See more" }
         }
     });
 }
@@ -360,13 +514,13 @@ async fn generic_latest_handler(
     return Ok(html! {
         (Css("/res/styles.css"))
         h1.page_title { "Latest items" }
-        ( paginator(page, workdir.crawled.items.len(), 40, &format!("/{}/latest", &site.0)) )
+        ( paginator(page, workdir.crawled.items.len(), 40, &format!("/{}/booru/latest", &site.0)) )
         .item_thumb_grid {
             @for item in &items {
                 ( item_thumbnail(&item, &site.0) )
             }
         }
-        ( paginator(page, workdir.crawled.items.len(), 40, &format!("/{}/latest", &site.0)) )
+        ( paginator(page, workdir.crawled.items.len(), 40, &format!("/{}/booru/latest", &site.0)) )
     });
 }
 
@@ -418,13 +572,13 @@ async fn generic_oldest_handler(
     return Ok(html! {
         (Css("/res/styles.css"))
         h1.page_title { "Oldest items" }
-        ( paginator(page, workdir.crawled.items.len(), 40, &format!("/{}/oldest", &site.0)) )
+        ( paginator(page, workdir.crawled.items.len(), 40, &format!("/{}/booru/oldest", &site.0)) )
         .item_thumb_grid {
             @for item in &items {
                 ( item_thumbnail(&item, &site.0) )
             }
         }
-        ( paginator(page, workdir.crawled.items.len(), 40, &format!("/{}/oldest", &site.0)) )
+        ( paginator(page, workdir.crawled.items.len(), 40, &format!("/{}/booru/oldest", &site.0)) )
     });
 }
 
@@ -482,13 +636,13 @@ async fn generic_tag_handler(
     return Ok(html! {
         (Css("/res/styles.css"))
         h1.page_title { "Items tagged \"" (tag) "\"" }
-        ( paginator(page, filtered_items_len, 40, &format!("/{}/tag/{}", &site.0, encode(&tag))) )
+        ( paginator(page, filtered_items_len, 40, &format!("/{}/booru/tag/{}", &site.0, encode(&tag))) )
         .item_thumb_grid {
             @for item in &items {
                 ( item_thumbnail(&item, &site.0) )
             }
         }
-        ( paginator(page, filtered_items_len, 40, &format!("/{}/tag/{}", &site.0, encode(&tag))) )
+        ( paginator(page, filtered_items_len, 40, &format!("/{}/booru/tag/{}", &site.0, encode(&tag))) )
     });
 }
 
@@ -517,7 +671,6 @@ async fn tags_handler(
     site: web::Data<WorkDirPrefix>,
     workdir: web::Data<ThreadSafeWorkDir>,
 ) -> Result<impl Responder, actix_web::Error> {
-    // 503 if workdir is write locked
     let workdir_data = workdir.into_inner();
     let workdir_lock = workdir_data.work_dir.try_read();
     let workdir = match workdir_lock {
@@ -529,105 +682,38 @@ async fn tags_handler(
         }
     };
 
-    let mut tags: HashMap<String, usize> = HashMap::new();
-
+    let mut tags: HashMap<String, Vec<String>> = HashMap::new();
     for item in workdir.crawled.items.values() {
         for tag in &item.tags {
-            let tag = match tag {
-                site::CrawlTag::Simple(x) => x,
-                site::CrawlTag::Detailed { value, .. } => value,
+            let tag_str = match tag {
+                site::CrawlTag::Simple(x) => x.clone(),
+                site::CrawlTag::Detailed { value, .. } => value.clone(),
             };
-
-            *tags.entry(tag.clone()).or_insert(0) += 1;
+            tags.entry(tag_str).or_default().push(item.key.clone());
         }
     }
 
-    let mut tags_vec: Vec<_> = tags.into_iter().collect();
-    tags_vec.sort_by(|a, b| b.1.cmp(&a.1));
-
-    return Ok(html! {
-        (Css("/res/styles.css"))
-        h1.page_title { "Site tags" }
+    let content = html! {
+        h2 { "Tags" }
         ul.tag_list {
-            @for tag in &tags_vec {
+            @for (tag, items) in &tags {
                 li {
-                    a.tag_link href=(format!("/{}/tag/{}", site.0, encode(&tag.0))) { (tag.0) " (" (tag.1) ")" }
+                    a href=(format!("/{}/booru/tag/{}", site.0, encode(tag))) {
+                        (tag) " (" (items.len()) ")"
+                    }
                 }
             }
         }
-    });
-}
-
-#[get("")]
-async fn root_redirect(site: web::Data<WorkDirPrefix>) -> Result<HttpResponse, actix_web::Error> {
-    Ok(HttpResponse::SeeOther()
-        .append_header(("Location", format!("/{}/latest", site.0)))
-        .finish())
-}
-
-#[get("/item/{item}")]
-async fn item_redirect(
-    path: web::Path<String>,
-    site: web::Data<WorkDirPrefix>,
-    workdir: web::Data<ThreadSafeWorkDir>,
-) -> Result<Either<impl Responder, HttpResponse>, actix_web::Error> {
-    // 503 if workdir is write locked
-    let workdir_data = workdir.into_inner();
-    let workdir_lock = workdir_data.work_dir.try_read();
-    let workdir = match workdir_lock {
-        Ok(x) => x,
-        Err(_) => {
-            return Err(actix_web::Error::from(
-                actix_web::error::ErrorServiceUnavailable("Work directory is locked"),
-            ));
-        }
     };
 
-    let item = workdir
-        .crawled
-        .items
-        .get(&decode(&path).unwrap().into_owned());
-
-    let Some(item) = item else {
-        return Ok(Either::Left(html! {
-            (Css("/res/styles.css"))
-            h1 { "Hello!" }
-            p { "Item not found" }
-        }));
-    };
-
-    let file = item.files.keys().into_iter().next();
-
-    let Some(file_key) = file else {
-        return Ok(Either::Left(html! {
-            (Css("/res/styles.css"))
-            h1 { "Hello!" }
-            p { "Item had no files" }
-        }));
-    };
-
-    Ok(Either::Right(
-        actix_web::HttpResponse::SeeOther()
-            .append_header((
-                "Location",
-                format!(
-                    "/{}/item/{}/{}",
-                    site.0,
-                    encode(&item.key),
-                    encode(file_key)
-                ),
-            ))
-            .finish(),
-    ))
+    Ok(HttpResponse::Ok().body(content.into_string()))
 }
 
-#[get("/item/{item}/{file}")]
-async fn item_handler(
-    path: web::Path<(String, String)>,
+#[get("/archive")]
+async fn blog_archive_root_handler(
     site: web::Data<WorkDirPrefix>,
     workdir: web::Data<ThreadSafeWorkDir>,
 ) -> Result<impl Responder, actix_web::Error> {
-    // 503 if workdir is write locked
     let workdir_data = workdir.into_inner();
     let workdir_lock = workdir_data.work_dir.try_read();
     let workdir = match workdir_lock {
@@ -639,291 +725,144 @@ async fn item_handler(
         }
     };
 
-    let item = workdir
-        .crawled
-        .items
-        .get(&decode(path.0.as_str()).unwrap().into_owned());
+    let archive = get_archive_data(&workdir.crawled.items);
 
-    let Some(item) = item else {
-        return Ok(html! {
-            (Css("/res/styles.css"))
-            h1 { "Hello!" }
-            p { "Item not found" }
-        });
-    };
+    // Group by year first
+    let mut years: BTreeMap<i32, Vec<(u8, usize)>> = BTreeMap::new();
+    for ((year, month), count) in archive {
+        years.entry(year).or_default().push((month, count));
+    }
 
-    let files = item.flat_files();
-    let file = files.get(&decode(path.1.as_str()).unwrap().into_owned());
-
-    // Find filename of next and previous file
-    let file_keys = files.keys().collect::<Vec<&String>>();
-    let file_index = file_keys.iter().position(|x| **x == path.1);
-    let prev_file = file_index.and_then(|index| file_keys.get(index.wrapping_sub(1)).map(|x| *x));
-    let next_file = file_index.and_then(|index| file_keys.get(index.wrapping_add(1)).map(|x| *x));
-
-    return Ok(html! {
-        (Css("/res/styles.css"))
-        (Js("/res/detail_page.js"))
-        .item_detail_page_container {
-            .item_detail_page_sidebar {
-                dt { "Source" }
-                // FIXME: Fancy linking, show only the domain name
-                dd { (item.url) }
-                dt { "Data Directory"}
-                dd { (site.0) }
-                dt { "Title" }
-                dd { (item.title) }
-                dt { "Description" }
-                dd { (item.description) }
-                dt { "Published" }
-                // TODO FIXME: date_time_element should take in i64
-                // FIXME: These would be nice as timeago style strings
-                dd { (date_time_element(Some(item.source_published as u64))) }
-                dt { "First Seen" }
-                dd { (date_time_element(Some(item.first_seen))) }
-                dt { "Last Seen" }
-                dd { (date_time_element(Some(item.last_seen))) }
-
-                dt { "Item Key" }
-                dd { (item.key) }
-
-                dt { "Files" }
-                dd {
-                    @for file in &files {
-                        @if *file.0 == path.1 {
-                            span.file_link { (file.0) }
-                        } @else {
-                            a.file_link href=(format!("/{}/item/{}/{}", site.0, encode(&item.key), encode(file.0))) "data-is-prev"[prev_file.is_some_and(|x| x == file.0)] "data-is-next"[next_file.is_some_and(|x| x == file.0)] { (file.0) }
-                        }
-                    }
-                }
-
-                // TODO: Dynamically insert item.meta here
-
-                // FIXME: How do we handle no-tags
-                dt { "Tags" }
-                dd {
-                    @for tag in &item.tags {
-                        @match tag {
-                            site::CrawlTag::Simple(x) => a.tag href=(format!("/{}/tag/{}", site.0, encode(x))) { (x) },
-                            site::CrawlTag::Detailed { value, .. } => a.tag href=(format!("/{}/tag/{}", site.0, encode(value))) { (value) },
-                        }
-                    }
-                }
-            }
-            .item_detail_page_file {
-                @match file {
-                    None => {
-                        p.file_not_found { "File not found" }
-                    }
-                    Some(file) => {
-                        @match file {
-                            site::FileCrawlType::Image { filename, downloaded, .. } => {
-                                @if *downloaded {
-                                    img src=(format!("/{}/assets/{}", site.0, filename)) {}
-                                } @else {
-                                    p { "Image not downloaded" }
-                                }
-                            }
-                            site::FileCrawlType::Video { filename, downloaded, .. } => {
-                                @if *downloaded {
-                                    // Replace the extension with mp4
-                                    // When we download, we convert everything to mp4
-                                    @let coerced_filename = filename.split('.').next().unwrap_or("").to_string() + ".mp4";
-                                    video autoplay controls {
-                                        source src=(format!("/{}/assets/{}", site.0, coerced_filename)) {}
+    let content = html! {
+        .blog_archive_page {
+            h2 { "Archive" }
+            ul.blog_archive_list.full_archive_list {
+                @for (year, months) in years.iter().rev() {
+                    li.archive_year {
+                        h3.year_name { (year) }
+                        ul.month_list {
+                            @for (month, count) in months.iter().rev() {
+                                li.archive_month {
+                                    a href=(format!("/{}/blog/archive/{}/{:02}", site.0, year, month)) {
+                                        span.month_name { (Month::try_from(*month).unwrap().name()) }
+                                        span.month_count { "(" (count) ")" }
                                     }
-                                } @else {
-                                    p { "Video not downloaded" }
                                 }
                             }
-                            site::FileCrawlType::Intermediate { .. } => {
-                                p { "Intermediate file, no preview available" }
-                            }
-                            _ => {}
                         }
                     }
                 }
             }
         }
-    });
+    };
+
+    Ok(blogger_layout("Archive", content, &site.0, &workdir))
 }
 
-// #[get("/assets/{tail:.*}")]
-// async fn assets_handler(
-//     path: web::Path<String>,
-//     work_dir: web::Data<WorkDir>,
-// ) -> Result<impl Responder, actix_web::Error> {
-//     let workdir = work_dir.clone();
-//     let path = path.into_inner();
+#[get("/post/{post}")]
+async fn blog_post_handler(
+    site: web::Data<WorkDirPrefix>,
+    workdir: web::Data<ThreadSafeWorkDir>,
+    path: web::Path<String>,
+) -> Result<impl Responder, actix_web::Error> {
+    let workdir_data = workdir.into_inner();
+    let workdir_lock = workdir_data.work_dir.try_read();
+    let workdir = match workdir_lock {
+        Ok(x) => x,
+        Err(_) => {
+            return Err(actix_web::Error::from(
+                actix_web::error::ErrorServiceUnavailable("Work directory is locked"),
+            ));
+        }
+    };
 
-//     let asset = workdir.path.join("assets").join(path);
+    let post_key = decode(&path.into_inner()).unwrap().into_owned();
+    let item = workdir.crawled.items.get(&post_key);
 
-//     Ok(actix_files::NamedFile::open(asset)?)
-// }
+    let Some(item) = item else {
+        return Ok(blogger_layout(
+            "Post not found",
+            html! { p { "The requested post could not be found." } },
+            &site.0,
+            &workdir,
+        ));
+    };
 
-// #[post("/api/class")]
-// async fn event_class_create(
-//     create_class: Json<CreateClass>,
-//     pool: web::Data<Pool<SqliteConnectionManager>>,
-//     user_id: UserId,
-// ) -> Result<impl Responder, actix_web::Error> {
-//     let class = insert_class(&pool, create_class.into_inner(), user_id.into_inner()?)
-//         .await
-//         .unwrap();
-//     Ok(web::Json(class))
-// }
+    let time = Utc
+        .timestamp_millis_opt(item.source_published as i64)
+        .unwrap();
 
-// #[put("/api/class/{id}")]
-// async fn event_class_update(
-//     create_class: Json<CreateClass>,
-//     id: web::Path<i64>,
-//     pool: web::Data<Pool<SqliteConnectionManager>>,
-//     user_id: UserId,
-// ) -> Result<impl Responder, actix_web::Error> {
-//     let class = update_class(
-//         &pool,
-//         id.into_inner(),
-//         create_class.into_inner(),
-//         user_id.into_inner()?,
-//     )
-//     .await
-//     .unwrap();
-//     Ok(web::Json(class))
-// }
+    let content = html! {
+        article.blog_post {
+            header.post_header {
+                h1.post_title { (item.title) }
+                .post_meta {
+                    time datetime=(time.to_rfc3339()) {
+                        (time.format("%B %d, %Y"))
+                    }
+                }
+            }
+            .post_content {
+                @for file in item.flat_files().values() {
+                    @match file {
+                        site::FileCrawlType::Image { filename, downloaded, .. } => {
+                            @if *downloaded {
+                                figure.post_figure {
+                                    img.post_image src=(format!("/{}/assets/{}", site.0, filename)) alt=(item.title) {}
+                                }
+                            }
+                        }
+                        site::FileCrawlType::Video { filename, downloaded, .. } => {
+                            @if *downloaded {
+                                @let coerced_filename = filename.split('.').next().unwrap_or("").to_string() + ".mp4";
+                                figure.post_figure {
+                                    video.post_video controls {
+                                        source src=(format!("/{}/assets/{}", site.0, coerced_filename)) {}
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
 
-// #[delete("/api/class/{id}")]
-// async fn event_class_delete(
-//     id: web::Path<i64>,
-//     pool: web::Data<Pool<SqliteConnectionManager>>,
-//     user_id: UserId,
-// ) -> Result<impl Responder, actix_web::Error> {
-//     delete_class(&pool, id.into_inner(), user_id.into_inner()?)
-//         .await
-//         .unwrap();
+                .post_description {
+                    p { (item.description) }
+                }
 
-//     Ok(HttpResponse::NoContent())
-// }
+                @if !item.meta.is_object() || !item.meta.as_object().unwrap().is_empty() {
+                    .post_meta_details {
+                        h3 { "Additional Details" }
+                        dl {
+                            @for (key, value) in item.meta.as_object().unwrap() {
+                                dt { (key) }
+                                dd { (value) }
+                            }
+                        }
+                    }
+                }
+            }
+            footer.post_footer {
+                .post_tags {
+                    @for tag in &item.tags {
+                        @match tag {
+                            site::CrawlTag::Simple(x) =>
+                                a.post_tag href=(format!("/{}/blog/tag/{}", site.0, encode(x))) { (x) },
+                            site::CrawlTag::Detailed { value, .. } =>
+                                a.post_tag href=(format!("/{}/blog/tag/{}", site.0, encode(value))) { (value) },
+                        }
+                    }
+                }
+                p.post_source {
+                    "Source: "
+                    a href=(item.url) { (item.url) }
+                }
+            }
+        }
+    };
 
-// #[get("/api/class/{class_id}/events")]
-// async fn event_class_events(
-//     class_id: web::Path<i64>,
-//     pool: web::Data<Pool<SqliteConnectionManager>>,
-//     user_id: UserId,
-// ) -> Result<impl Responder, actix_web::Error> {
-//     let events = get_events(&pool, class_id.into_inner(), user_id.into_inner()?)
-//         .await
-//         .unwrap();
-//     Ok(web::Json(events))
-// }
-
-// #[post("/api/class/{class_id}/events")]
-// async fn record_event(
-//     create_event: Json<CreateEvent>,
-//     class_id: web::Path<i64>,
-//     pool: web::Data<Pool<SqliteConnectionManager>>,
-//     user_id: UserId,
-// ) -> Result<impl Responder, actix_web::Error> {
-//     let event = insert_event(
-//         &pool,
-//         class_id.into_inner(),
-//         create_event.into_inner(),
-//         user_id.into_inner()?,
-//     )
-//     .await
-//     .unwrap();
-//     Ok(web::Json(event))
-// }
-
-// #[delete("/api/class/{class_id}/event/{event_id}")]
-// async fn delete_event(
-//     path_params: web::Path<(i64, i64)>,
-//     pool: web::Data<Pool<SqliteConnectionManager>>,
-//     user_id: UserId,
-// ) -> Result<impl Responder, actix_web::Error> {
-//     let (class_id, event_id) = path_params.into_inner();
-
-//     db_delete_event(&pool, class_id, event_id, user_id.into_inner()?)
-//         .await
-//         .unwrap();
-
-//     Ok(HttpResponse::NoContent())
-// }
-
-// #[get("/api/class/{class_id}/events/latest")]
-// async fn event_class_latest_event(
-//     class_id: web::Path<i64>,
-//     pool: web::Data<Pool<SqliteConnectionManager>>,
-//     user_id: UserId,
-// ) -> Result<impl Responder, actix_web::Error> {
-//     let event = get_latest_event(&pool, class_id.into_inner(), user_id.into_inner()?)
-//         .await
-//         .unwrap();
-//     Ok(web::Json(event))
-// }
-
-// async fn manual_hello() -> impl Responder {
-//     HttpResponse::Ok().body("Hey there!")
-// }
-
-// #[get("/api/auth")]
-// async fn profile(
-//     pool: web::Data<Pool<SqliteConnectionManager>>,
-//     user_id: UserId,
-// ) -> Result<impl Responder, actix_web::Error> {
-//     let profile = fetch_profile(&pool, user_id.into_inner()?).await?;
-
-//     Ok(web::Json(profile))
-// }
-
-// #[post("/api/auth")]
-// async fn login(
-//     login: Json<Login>,
-//     pool: web::Data<Pool<SqliteConnectionManager>>,
-//     session: Session,
-// ) -> Result<impl Responder, actix_web::Error> {
-//     let uid = authenticate(&pool, login.username.clone(), &login.password).await?;
-
-//     session.insert("user_id", uid)?;
-
-//     Ok(HttpResponse::Ok().body("Login success!"))
-// }
-
-// #[post("/api/auth/register")]
-// async fn register(
-//     registration: Json<Registration>,
-//     pool: web::Data<Pool<SqliteConnectionManager>>,
-//     session: Session,
-// ) -> Result<impl Responder, actix_web::Error> {
-//     if std::env::var("ALLOW_REGISTRATION").unwrap_or("false".to_string()) == "false" {
-//         return Ok(HttpResponse::Forbidden().body("Registration is disabled"));
-//     }
-
-//     let reg = registration.into_inner();
-
-//     if reg.username.trim().is_empty() {
-//         return Err(error::ErrorBadRequest("username cannot be empty"));
-//     }
-//     if reg.password.trim().is_empty() {
-//         return Err(error::ErrorBadRequest("password cannot be empty"));
-//     }
-//     if reg.name.trim().is_empty() {
-//         return Err(error::ErrorBadRequest("name cannot be empty"));
-//     }
-
-//     let uid = sign_up(&pool, reg).await?;
-
-//     session.insert("user_id", uid)?;
-
-//     Ok(HttpResponse::Ok().body("Registration success!"))
-// }
-
-// #[delete("/api/auth")]
-// async fn logout(session: Session) -> impl Responder {
-//     session.clear();
-
-//     HttpResponse::Ok().body("Logout success!")
-// }
+    Ok(blogger_layout("", content, &site.0, &workdir))
+}
 
 async fn validator(
     req: actix_web::dev::ServiceRequest,
@@ -1022,18 +961,38 @@ async fn run() -> crate::errors::Result<()> {
                             .app_data(web::Data::new(WorkDirPrefix(
                                 workdir.work_dir.read().unwrap().config.slug.clone(),
                             )))
+                            // Add info handler at site root level
                             .service(info_handler)
-                            .service(random_handler)
-                            .service(latest_handler)
-                            .service(latest_page_handler)
-                            .service(oldest_handler)
-                            .service(oldest_page_handler)
-                            .service(root_redirect)
-                            .service(tags_handler)
-                            .service(tag_handler)
-                            .service(tag_page_handler)
-                            .service(item_handler)
-                            .service(item_redirect)
+                            // Add a /booru scope for imageboard style routes
+                            .service(
+                                web::scope("/booru")
+                                    .service(random_handler)
+                                    .service(latest_handler)
+                                    .service(latest_page_handler)
+                                    .service(oldest_handler)
+                                    .service(oldest_page_handler)
+                                    .service(root_redirect)
+                                    .service(tags_handler)
+                                    .service(tag_handler)
+                                    .service(tag_page_handler)
+                                    .service(item_handler)
+                                    .service(item_redirect),
+                            )
+                            // Add a /blog scope for blogger style routes
+                            .service(
+                                web::scope("/blog")
+                                    .service(blog_home_handler)
+                                    .service(blog_home_page_handler)
+                                    .service(tags_handler)
+                                    .service(blog_archive_root_handler)
+                                    .service(blog_post_handler)
+                                    .service(blog_tag_handler)
+                                    .service(blog_archive_handler)
+                                    .service(blog_home_page_handler)
+                                    .service(blog_tag_page_handler)
+                                    .service(blog_archive_page_handler),
+                            )
+                            // Keep assets at the site root level since they're shared across views
                             .service(
                                 Files::new(
                                     "/assets",
@@ -1061,4 +1020,300 @@ async fn main() {
         // _e.print();
         ::std::process::exit(1);
     }
+}
+
+// Blogger style handlers
+#[get("/")]
+async fn blog_home_handler(
+    site: web::Data<WorkDirPrefix>,
+    workdir: web::Data<ThreadSafeWorkDir>,
+) -> Result<impl Responder, actix_web::Error> {
+    generic_blog_home_handler(site, workdir, web::Path::from(1)).await
+}
+
+#[get("/page/{page}")]
+async fn blog_home_page_handler(
+    site: web::Data<WorkDirPrefix>,
+    workdir: web::Data<ThreadSafeWorkDir>,
+    path: web::Path<usize>,
+) -> Result<impl Responder, actix_web::Error> {
+    generic_blog_home_handler(site, workdir, path).await
+}
+
+async fn generic_blog_home_handler(
+    site: web::Data<WorkDirPrefix>,
+    workdir: web::Data<ThreadSafeWorkDir>,
+    path: web::Path<usize>,
+) -> Result<impl Responder, actix_web::Error> {
+    let workdir_data = workdir.into_inner();
+    let workdir_lock = workdir_data.work_dir.try_read();
+    let workdir = match workdir_lock {
+        Ok(x) => x,
+        Err(_) => {
+            return Err(actix_web::Error::from(
+                actix_web::error::ErrorServiceUnavailable("Work directory is locked"),
+            ));
+        }
+    };
+
+    let page = path.into_inner();
+    let per_page = 10;
+    let total_items = workdir.crawled.items.len();
+
+    let items: Vec<&CrawlItem> = workdir
+        .crawled
+        .items
+        .values()
+        .skip((page - 1) * per_page)
+        .take(per_page)
+        .collect();
+
+    let content = html! {
+        .blog_posts {
+            @for item in items {
+                (blogger_post_card(item, &site.0))
+            }
+        }
+        (paginator(page, total_items, per_page, &format!("/{}/blog/page", &site.0)))
+    };
+
+    Ok(blogger_layout("", content, &site.0, &workdir))
+}
+
+#[get("/tag/{tag}")]
+async fn blog_tag_handler(
+    site: web::Data<WorkDirPrefix>,
+    workdir: web::Data<ThreadSafeWorkDir>,
+    path: web::Path<String>,
+) -> Result<impl Responder, actix_web::Error> {
+    generic_blog_tag_handler(site, workdir, path, web::Path::from(1)).await
+}
+
+#[get("/tag/{tag}/page/{page}")]
+async fn blog_tag_page_handler(
+    site: web::Data<WorkDirPrefix>,
+    workdir: web::Data<ThreadSafeWorkDir>,
+    path: web::Path<(String, usize)>,
+) -> Result<impl Responder, actix_web::Error> {
+    let (tag, page) = path.into_inner();
+    generic_blog_tag_handler(site, workdir, web::Path::from(tag), web::Path::from(page)).await
+}
+
+async fn generic_blog_tag_handler(
+    site: web::Data<WorkDirPrefix>,
+    workdir: web::Data<ThreadSafeWorkDir>,
+    tag_path: web::Path<String>,
+    page_path: web::Path<usize>,
+) -> Result<impl Responder, actix_web::Error> {
+    let workdir_data = workdir.into_inner();
+    let workdir_lock = workdir_data.work_dir.try_read();
+    let workdir = match workdir_lock {
+        Ok(x) => x,
+        Err(_) => {
+            return Err(actix_web::Error::from(
+                actix_web::error::ErrorServiceUnavailable("Work directory is locked"),
+            ));
+        }
+    };
+
+    let tag = decode(&tag_path.into_inner()).unwrap().into_owned();
+    let page = page_path.into_inner();
+    let per_page = 10;
+
+    let filtered_items: Vec<&CrawlItem> = workdir
+        .crawled
+        .items
+        .values()
+        .filter(|item| item.tags.iter().any(|x| x.to_string() == tag))
+        .collect();
+
+    let total_items = filtered_items.len();
+
+    let items: Vec<&CrawlItem> = filtered_items
+        .into_iter()
+        .skip((page - 1) * per_page)
+        .take(per_page)
+        .collect();
+
+    let content = html! {
+        .blog_posts {
+            @for item in items {
+                (blogger_post_card(item, &site.0))
+            }
+        }
+        (paginator(page, total_items, per_page, &format!("/{}/blog/tag/{}/page", &site.0, encode(&tag))))
+    };
+
+    Ok(blogger_layout(
+        &format!("Posts tagged \"{}\"", tag),
+        content,
+        &site.0,
+        &workdir,
+    ))
+}
+
+#[get("/archive/{year}/{month}")]
+async fn blog_archive_handler(
+    site: web::Data<WorkDirPrefix>,
+    workdir: web::Data<ThreadSafeWorkDir>,
+    path: web::Path<(i32, u8)>,
+) -> Result<impl Responder, actix_web::Error> {
+    generic_blog_archive_handler(site, workdir, path, web::Path::from(1)).await
+}
+
+#[get("/archive/{year}/{month}/page/{page}")]
+async fn blog_archive_page_handler(
+    site: web::Data<WorkDirPrefix>,
+    workdir: web::Data<ThreadSafeWorkDir>,
+    path: web::Path<(i32, u8, usize)>,
+) -> Result<impl Responder, actix_web::Error> {
+    let (year, month, page) = path.into_inner();
+    generic_blog_archive_handler(
+        site,
+        workdir,
+        web::Path::from((year, month)),
+        web::Path::from(page),
+    )
+    .await
+}
+
+async fn generic_blog_archive_handler(
+    site: web::Data<WorkDirPrefix>,
+    workdir: web::Data<ThreadSafeWorkDir>,
+    archive_path: web::Path<(i32, u8)>,
+    page_path: web::Path<usize>,
+) -> Result<impl Responder, actix_web::Error> {
+    let workdir_data = workdir.into_inner();
+    let workdir_lock = workdir_data.work_dir.try_read();
+    let workdir = match workdir_lock {
+        Ok(x) => x,
+        Err(_) => {
+            return Err(actix_web::Error::from(
+                actix_web::error::ErrorServiceUnavailable("Work directory is locked"),
+            ));
+        }
+    };
+
+    let (year, month) = archive_path.into_inner();
+    let page = page_path.into_inner();
+    let per_page = 10;
+    let month_name = Month::try_from(month).unwrap().name();
+
+    let filtered_items: Vec<&CrawlItem> = workdir
+        .crawled
+        .items
+        .values()
+        .filter(|item| {
+            let time = Utc
+                .timestamp_millis_opt(item.source_published as i64)
+                .unwrap();
+            time.year() == year && time.month() as u8 == month
+        })
+        .collect();
+
+    let total_items = filtered_items.len();
+
+    let items: Vec<&CrawlItem> = filtered_items
+        .into_iter()
+        .skip((page - 1) * per_page)
+        .take(per_page)
+        .collect();
+
+    let content = html! {
+        .blog_posts {
+            @for item in items {
+                (blogger_post_card(item, &site.0))
+            }
+        }
+        (paginator(page, total_items, per_page, &format!("/{}/blog/archive/{}/{:02}/page", &site.0, year, month)))
+    };
+
+    Ok(blogger_layout(
+        &format!("Posts from {month_name} {year}"),
+        content,
+        &site.0,
+        &workdir,
+    ))
+}
+
+pub fn configure_blog(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("/blog")
+            .service(blog_home_handler)
+            .service(tags_handler)
+            .service(blog_archive_root_handler)
+            .service(blog_post_handler)
+            .service(blog_tag_handler)
+            .service(blog_archive_handler)
+            .service(blog_home_page_handler)
+            .service(blog_tag_page_handler)
+            .service(blog_archive_page_handler),
+    );
+}
+
+pub fn configure_app(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("")
+            .configure(configure_blog)
+            .service(web::scope("/assets").service(fs::Files::new("", "assets"))),
+    );
+}
+
+#[get("/")]
+async fn root_redirect() -> impl Responder {
+    HttpResponse::Found()
+        .append_header(("Location", "/blog"))
+        .finish()
+}
+
+#[get("/item/{id}")]
+async fn item_handler(
+    site: web::Data<WorkDirPrefix>,
+    workdir: web::Data<ThreadSafeWorkDir>,
+    path: web::Path<String>,
+) -> Result<impl Responder, actix_web::Error> {
+    let workdir_data = workdir.into_inner();
+    let workdir_lock = workdir_data.work_dir.try_read();
+    let workdir = match workdir_lock {
+        Ok(x) => x,
+        Err(_) => {
+            return Err(actix_web::Error::from(
+                actix_web::error::ErrorServiceUnavailable("Work directory is locked"),
+            ));
+        }
+    };
+
+    let id = path.into_inner();
+    if let Some(item) = workdir.crawled.items.get(&id) {
+        let content = html! {
+            article.post {
+                h1 { (item.title) }
+                @if let Some(thumb) = item.thumbnail_path() {
+                    img src=(format!("/{}/assets/{}", site.0, thumb)) alt=(item.title) {}
+                }
+                p { (item.description) }
+                .tags {
+                    @for tag in &item.tags {
+                        @match tag {
+                            site::CrawlTag::Simple(x) =>
+                                a.tag href=(format!("/{}/booru/tag/{}", site.0, encode(x))) { (x) },
+                            site::CrawlTag::Detailed { value, .. } =>
+                                a.tag href=(format!("/{}/booru/tag/{}", site.0, encode(value))) { (value) },
+                        }
+                    }
+                }
+            }
+        };
+        Ok(HttpResponse::Ok().body(content.into_string()))
+    } else {
+        Ok(HttpResponse::NotFound().finish())
+    }
+}
+
+#[get("/items/{id}")]
+async fn item_redirect(path: web::Path<String>) -> impl Responder {
+    let id = path.into_inner();
+    HttpResponse::Found()
+        .append_header(("Location", format!("/blog/item/{}", id)))
+        .finish()
 }
