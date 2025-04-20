@@ -410,31 +410,31 @@ dd {
 }
 
 /* Full Tag and Archive Pages */
-.blog_tags_page, .blog_archive_page {
+.tag_list_page, .blog_archive_page {
   background: #111;
   border: 1px solid #333;
   border-radius: 4px;
   padding: 30px;
 }
 
-.blog_tags_page h2, .blog_archive_page h2 {
+.tag_list_page h2, .blog_archive_page h2 {
   margin-top: 0;
   margin-bottom: 30px;
   padding-bottom: 15px;
   border-bottom: 1px solid #333;
 }
 
-.full_tag_list {
+.tag_list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 15px;
 }
 
-.full_tag_list li {
+.tag_list li {
   margin: 0;
 }
 
-.full_tag_list a {
+.tag_list a {
   background: #1a1a1a;
   padding: 10px 15px;
   border-radius: 4px;
@@ -442,7 +442,7 @@ dd {
   transition: all 0.2s ease;
 }
 
-.full_tag_list a:hover {
+.tag_list a:hover {
   background: #222;
   border-color: #444;
 }

@@ -694,19 +694,22 @@ async fn tags_handler(
     }
 
     let content = html! {
-        h2 { "Tags" }
-        ul.tag_list {
-            @for (tag, items) in &tags {
-                li {
-                    a href=(format!("/{}/booru/tag/{}", site.0, encode(tag))) {
-                        (tag) " (" (items.len()) ")"
+        .tag_list_page {
+            h2 { "Tags" }
+            ul.tag_list {
+                @for (tag, items) in &tags {
+                    li.tag_item {
+                        a href=(format!("/{}/blog/tag/{}", site.0, encode(tag))) {
+                            span.tag_name { (tag) }
+                            span.tag_count { " (" (items.len()) ")" }
+                        }
                     }
                 }
             }
         }
     };
 
-    Ok(HttpResponse::Ok().body(content.into_string()))
+    Ok(blogger_layout("Tags", content, &site.0, &workdir))
 }
 
 #[get("/archive")]
