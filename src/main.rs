@@ -175,8 +175,8 @@ async fn run() -> errors::Result<()> {
                         handlers::SiteRendererType::Reddit,
                     ];
 
+                    // Ordering matters, do more specific routes first
                     for renderer in renderers.iter() {
-                        println!("Adding renderer: {}", renderer.get_prefix());
                         app = app.service(
                             web::scope(&format!("{}/{}", slug, renderer.get_prefix()))
                                 .app_data(web::Data::new(workdir.clone()))
