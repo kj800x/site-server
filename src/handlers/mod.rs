@@ -96,6 +96,37 @@ pub struct ListingPageConfig {
     total: usize,
 }
 
+trait PaginatorPrefix {
+    fn paginator_prefix(&self, site_prefix: &str, rendering_prefix: &str) -> String;
+}
+
+impl PaginatorPrefix for ListingPageConfig {
+    fn paginator_prefix(&self, site_prefix: &str, rendering_prefix: &str) -> String {
+        match &self.mode {
+            ListingPageMode::All => match &self.ordering {
+                ListingPageOrdering::NewestFirst => {
+                    format!("/{}/{}/latest", site_prefix, rendering_prefix)
+                }
+                ListingPageOrdering::OldestFirst => {
+                    format!("/{}/{}/oldest", site_prefix, rendering_prefix)
+                }
+                ListingPageOrdering::Random => {
+                    format!("/{}/{}/random", site_prefix, rendering_prefix)
+                }
+            },
+            ListingPageMode::ByTag { tag } => {
+                format!("/{}/{}/tag/{}", site_prefix, rendering_prefix, tag)
+            }
+            ListingPageMode::ByMonth { year, month } => {
+                format!(
+                    "/{}/{}/archive/{}/{}",
+                    site_prefix, rendering_prefix, year, month
+                )
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub enum SiteRendererType {
     Blog,
@@ -136,8 +167,10 @@ impl SiteRenderer for SiteRendererType {
         config: ListingPageConfig,
         items: &[CrawlItem],
     ) -> Markup {
-        html! {
-            h1 { "Test Listing Page" }
+        match self {
+            SiteRendererType::Blog => blog::render_listing_page(work_dir, config, items),
+            SiteRendererType::Booru => booru::render_listing_page(work_dir, config, items),
+            SiteRendererType::Reddit => reddit::render_listing_page(work_dir, config, items),
         }
     }
 
@@ -147,8 +180,10 @@ impl SiteRenderer for SiteRendererType {
         item: &CrawlItem,
         file: &FileCrawlType,
     ) -> Markup {
-        html! {
-            h1 { "Test Detail Page" }
+        match self {
+            SiteRendererType::Blog => blog::render_detail_page(work_dir, item, file),
+            SiteRendererType::Booru => booru::render_detail_page(work_dir, item, file),
+            SiteRendererType::Reddit => reddit::render_detail_page(work_dir, item, file),
         }
     }
 
@@ -157,8 +192,10 @@ impl SiteRenderer for SiteRendererType {
         work_dir: &ThreadSafeWorkDir,
         tags: &HashMap<String, usize>,
     ) -> Markup {
-        html! {
-            h1 { "Test Tags Page" }
+        match self {
+            SiteRendererType::Blog => blog::render_tags_page(work_dir, tags),
+            SiteRendererType::Booru => booru::render_tags_page(work_dir, tags),
+            SiteRendererType::Reddit => reddit::render_tags_page(work_dir, tags),
         }
     }
 
@@ -167,8 +204,10 @@ impl SiteRenderer for SiteRendererType {
         work_dir: &ThreadSafeWorkDir,
         archive: &HashMap<(i32, u8), usize>,
     ) -> Markup {
-        html! {
-            h1 { "Test Archive Page" }
+        match self {
+            SiteRendererType::Blog => blog::render_archive_page(work_dir, archive),
+            SiteRendererType::Booru => booru::render_archive_page(work_dir, archive),
+            SiteRendererType::Reddit => reddit::render_archive_page(work_dir, archive),
         }
     }
 

@@ -7,7 +7,7 @@
 // .service(generic_archive_page_handler)
 // .service(generic_detail_handler),
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use actix_web::{get, web, HttpResponse, Responder};
 use chrono::{DateTime, Datelike, TimeZone, Utc};
@@ -227,7 +227,7 @@ pub async fn generic_tags_index_handler(
     renderer.render_tags_page(&workdir, &tags)
 }
 
-#[get("/tags/{tag}")]
+#[get("/tag/{tag}")]
 pub async fn generic_tag_handler(
     renderer: web::Data<SiteRendererType>,
     workdir: web::Data<ThreadSafeWorkDir>,
@@ -247,7 +247,7 @@ pub async fn generic_tag_handler(
     renderer.render_listing_page(&workdir, config, &items)
 }
 
-#[get("/tags/{tag}/{page}")]
+#[get("/tag/{tag}/{page}")]
 pub async fn generic_tag_page_handler(
     renderer: web::Data<SiteRendererType>,
     workdir: web::Data<ThreadSafeWorkDir>,
@@ -328,7 +328,7 @@ pub async fn generic_archive_page_handler(
     renderer.render_listing_page(&workdir, config, &items)
 }
 
-#[get("/detail/{id}")]
+#[get("/item/{id}")]
 pub async fn generic_detail_redirect(
     renderer: web::Data<SiteRendererType>,
     workdir: web::Data<ThreadSafeWorkDir>,
@@ -349,7 +349,7 @@ pub async fn generic_detail_redirect(
         .append_header((
             "Location",
             format!(
-                "/{}/{}/detail/{}/{}",
+                "/{}/{}/item/{}/{}",
                 workdir_prefix.0,
                 renderer.get_prefix(),
                 id,
@@ -359,7 +359,7 @@ pub async fn generic_detail_redirect(
         .finish()
 }
 
-#[get("/detail/{id}/{file_id}")]
+#[get("/item/{id}/{file_id}")]
 pub async fn generic_detail_handler(
     renderer: web::Data<SiteRendererType>,
     workdir: web::Data<ThreadSafeWorkDir>,

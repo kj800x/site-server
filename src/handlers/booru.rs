@@ -1,35 +1,28 @@
-use actix_web::{get, web, HttpResponse, Responder};
 use maud::{html, Markup};
-use rand::seq::IteratorRandom;
-use urlencoding::{decode, encode};
+use std::collections::HashMap;
+use urlencoding::encode;
 
-use crate::site::CrawlItem;
+use crate::handlers::PaginatorPrefix;
+use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
+use crate::thread_safe_work_dir::ThreadSafeWorkDir;
 
+use super::{ListingPageConfig, ListingPageMode};
+
+// Helper functions for rendering booru components
 fn booru_layout(title: &str, content: Markup, site: &str) -> Markup {
     html! {
-        (maud::DOCTYPE)
-        html lang="en" {
-            head {
-                meta charset="utf-8";
-                meta name="viewport" content="width=device-width, initial-scale=1.0";
-                title { (title) }
-                (super::Css("/res/styles.css"))
-            }
-            body {
-                .booru_layout {
-                    header.booru_header {
-                        nav.booru_nav {
-                            a href=(format!("/{}/booru/latest", site)) { "Latest" }
-                            a href=(format!("/{}/booru/random", site)) { "Random" }
-                        }
-                    }
-                    main.booru_main {
-                        @if !title.is_empty() {
-                            h1.page_title { (title) }
-                        }
-                        (content)
-                    }
+        .booru_layout {
+            header.booru_header {
+                nav.booru_nav {
+                    a href=(format!("/{}/booru/latest", site)) { "Latest" }
+                    a href=(format!("/{}/booru/random", site)) { "Random" }
                 }
+            }
+            main.booru_main {
+                @if !title.is_empty() {
+                    h1.page_title { (title) }
+                }
+                (content)
             }
         }
     }
@@ -48,8 +41,8 @@ fn item_thumbnail(item: &CrawlItem, site: &str) -> Markup {
             .item_thumb_tags {
                 @for tag in &item.tags {
                     @match tag {
-                        crate::site::CrawlTag::Simple(x) => .tag { (x) },
-                        crate::site::CrawlTag::Detailed { value, .. } => .tag { (value) },
+                        CrawlTag::Simple(x) => .tag { (x) },
+                        CrawlTag::Detailed { value, .. } => .tag { (value) },
                     }
                 }
             }
@@ -57,338 +50,148 @@ fn item_thumbnail(item: &CrawlItem, site: &str) -> Markup {
     }
 }
 
-#[get("/random")]
-pub async fn random_handler(
-    site: web::Data<super::WorkDirPrefix>,
-    workdir: web::Data<super::ThreadSafeWorkDir>,
-) -> Result<impl Responder, actix_web::Error> {
-    let workdir_data = workdir.into_inner();
-    let workdir_lock = workdir_data.work_dir.try_read();
-    let workdir = match workdir_lock {
-        Ok(x) => x,
-        Err(_) => {
-            return Err(actix_web::Error::from(
-                actix_web::error::ErrorServiceUnavailable("Work directory is locked"),
-            ));
-        }
-    };
+pub fn render_listing_page(
+    work_dir: &ThreadSafeWorkDir,
+    config: ListingPageConfig,
+    items: &[CrawlItem],
+) -> Markup {
+    let workdir = work_dir.work_dir.read().unwrap();
+    let site = workdir.config.slug.clone();
 
-    let rng = &mut rand::thread_rng();
-    let items = workdir
-        .crawled
-        .items
-        .values()
-        .into_iter()
-        .choose_multiple(rng, 40);
+    let title = match &config.mode {
+        ListingPageMode::All => String::new(),
+        ListingPageMode::ByTag { tag } => format!("Items tagged \"{}\"", tag),
+        ListingPageMode::ByMonth { year, month } => format!("Items from {}/{}", year, month),
+    };
 
     let content = html! {
+        ( super::paginator(config.page, config.total, config.per_page, &config.paginator_prefix(&site, "booru")) )
         .item_thumb_grid {
-            @for item in &items {
-                ( item_thumbnail(&item, &site.0) )
+            @for item in items {
+                ( item_thumbnail(item, &site) )
             }
         }
-        .paginator {
-            a href=(format!("/{}/booru/random", &site.0)) { "See more" }
-        }
+        ( super::paginator(config.page, config.total, config.per_page, &config.paginator_prefix(&site, "booru")) )
     };
 
-    Ok(booru_layout("Random items", content, &site.0))
+    booru_layout(&title, content, &site)
 }
 
-async fn generic_latest_handler(
-    site: web::Data<super::WorkDirPrefix>,
-    workdir: web::Data<super::ThreadSafeWorkDir>,
-    path: web::Path<usize>,
-) -> Result<impl Responder, actix_web::Error> {
-    let workdir_data = workdir.into_inner();
-    let workdir_lock = workdir_data.work_dir.try_read();
-    let workdir = match workdir_lock {
-        Ok(x) => x,
-        Err(_) => {
-            return Err(actix_web::Error::from(
-                actix_web::error::ErrorServiceUnavailable("Work directory is locked"),
-            ));
-        }
-    };
-
-    let page = path.into_inner();
-    let items: Vec<&CrawlItem> = workdir
-        .crawled
-        .items
-        .values()
-        .into_iter()
-        .skip((page - 1) * 40)
-        .take(40)
-        .collect();
+pub fn render_detail_page(
+    work_dir: &ThreadSafeWorkDir,
+    item: &CrawlItem,
+    file: &FileCrawlType,
+) -> Markup {
+    let workdir = work_dir.work_dir.read().unwrap();
+    let site = workdir.config.slug.clone();
 
     let content = html! {
-        ( super::paginator(page, workdir.crawled.items.len(), 40, &format!("/{}/booru/latest", &site.0)) )
-        .item_thumb_grid {
-            @for item in &items {
-                ( item_thumbnail(&item, &site.0) )
-            }
-        }
-        ( super::paginator(page, workdir.crawled.items.len(), 40, &format!("/{}/booru/latest", &site.0)) )
-    };
-
-    Ok(booru_layout("Latest items", content, &site.0))
-}
-
-#[get("/latest/{page}")]
-pub async fn latest_page_handler(
-    site: web::Data<super::WorkDirPrefix>,
-    workdir: web::Data<super::ThreadSafeWorkDir>,
-    path: web::Path<usize>,
-) -> Result<impl Responder, actix_web::Error> {
-    generic_latest_handler(site, workdir, path).await
-}
-
-#[get("/latest")]
-pub async fn latest_handler(
-    site: web::Data<super::WorkDirPrefix>,
-    workdir: web::Data<super::ThreadSafeWorkDir>,
-) -> Result<impl Responder, actix_web::Error> {
-    generic_latest_handler(site, workdir, web::Path::from(1)).await
-}
-
-async fn generic_oldest_handler(
-    site: web::Data<super::WorkDirPrefix>,
-    workdir: web::Data<super::ThreadSafeWorkDir>,
-    path: web::Path<usize>,
-) -> Result<impl Responder, actix_web::Error> {
-    let workdir_data = workdir.into_inner();
-    let workdir_lock = workdir_data.work_dir.try_read();
-    let workdir = match workdir_lock {
-        Ok(x) => x,
-        Err(_) => {
-            return Err(actix_web::Error::from(
-                actix_web::error::ErrorServiceUnavailable("Work directory is locked"),
-            ));
-        }
-    };
-
-    let page = path.into_inner();
-    let items: Vec<&CrawlItem> = workdir
-        .crawled
-        .items
-        .values()
-        .rev()
-        .into_iter()
-        .skip((page - 1) * 40)
-        .take(40)
-        .collect();
-
-    let content = html! {
-        ( super::paginator(page, workdir.crawled.items.len(), 40, &format!("/{}/booru/oldest", &site.0)) )
-        .item_thumb_grid {
-            @for item in &items {
-                ( item_thumbnail(&item, &site.0) )
-            }
-        }
-        ( super::paginator(page, workdir.crawled.items.len(), 40, &format!("/{}/booru/oldest", &site.0)) )
-    };
-
-    Ok(booru_layout("Oldest items", content, &site.0))
-}
-
-#[get("/oldest/{page}")]
-pub async fn oldest_page_handler(
-    site: web::Data<super::WorkDirPrefix>,
-    workdir: web::Data<super::ThreadSafeWorkDir>,
-    path: web::Path<usize>,
-) -> Result<impl Responder, actix_web::Error> {
-    generic_oldest_handler(site, workdir, path).await
-}
-
-#[get("/oldest")]
-pub async fn oldest_handler(
-    site: web::Data<super::WorkDirPrefix>,
-    workdir: web::Data<super::ThreadSafeWorkDir>,
-) -> Result<impl Responder, actix_web::Error> {
-    generic_oldest_handler(site, workdir, web::Path::from(1)).await
-}
-
-async fn generic_tag_handler(
-    site: web::Data<super::WorkDirPrefix>,
-    workdir: web::Data<super::ThreadSafeWorkDir>,
-    tag: String,
-    page: usize,
-) -> Result<impl Responder, actix_web::Error> {
-    let workdir_data = workdir.into_inner();
-    let workdir_lock = workdir_data.work_dir.try_read();
-    let workdir = match workdir_lock {
-        Ok(x) => x,
-        Err(_) => {
-            return Err(actix_web::Error::from(
-                actix_web::error::ErrorServiceUnavailable("Work directory is locked"),
-            ));
-        }
-    };
-
-    let filtered_items = workdir
-        .crawled
-        .items
-        .values()
-        .into_iter()
-        .filter(|item| item.tags.iter().any(|x| x.to_string() == tag))
-        .collect::<Vec<&CrawlItem>>();
-
-    let filtered_items_len = filtered_items.len();
-
-    let items: Vec<&CrawlItem> = filtered_items
-        .into_iter()
-        .skip((page - 1) * 40)
-        .take(40)
-        .collect();
-
-    let content = html! {
-        ( super::paginator(page, filtered_items_len, 40, &format!("/{}/booru/tag/{}", &site.0, encode(&tag))) )
-        .item_thumb_grid {
-            @for item in &items {
-                ( item_thumbnail(&item, &site.0) )
-            }
-        }
-        ( super::paginator(page, filtered_items_len, 40, &format!("/{}/booru/tag/{}", &site.0, encode(&tag))) )
-    };
-
-    Ok(booru_layout(
-        &format!("Items tagged \"{}\"", tag),
-        content,
-        &site.0,
-    ))
-}
-
-#[get("/tag/{tag}/{page}")]
-pub async fn tag_page_handler(
-    site: web::Data<super::WorkDirPrefix>,
-    workdir: web::Data<super::ThreadSafeWorkDir>,
-    path: web::Path<(String, usize)>,
-) -> Result<impl Responder, actix_web::Error> {
-    let (tag, page) = path.into_inner();
-    generic_tag_handler(site, workdir, decode(&tag).unwrap().into_owned(), page).await
-}
-
-#[get("/tag/{tag}")]
-pub async fn tag_handler(
-    site: web::Data<super::WorkDirPrefix>,
-    workdir: web::Data<super::ThreadSafeWorkDir>,
-    path: web::Path<String>,
-) -> Result<impl Responder, actix_web::Error> {
-    let tag = path.into_inner();
-    generic_tag_handler(site, workdir, decode(&tag).unwrap().into_owned(), 1).await
-}
-
-#[get("/")]
-pub async fn root_redirect() -> impl Responder {
-    HttpResponse::Found()
-        .append_header(("Location", "/blog"))
-        .finish()
-}
-
-#[get("/item/{id}")]
-pub async fn item_no_file_handler(
-    site: web::Data<super::WorkDirPrefix>,
-    workdir: web::Data<super::ThreadSafeWorkDir>,
-    path: web::Path<String>,
-) -> Result<impl Responder, actix_web::Error> {
-    let workdir_data = workdir.into_inner();
-    let workdir_lock = workdir_data.work_dir.try_read();
-    let workdir = match workdir_lock {
-        Ok(x) => x,
-        Err(_) => {
-            return Err(actix_web::Error::from(
-                actix_web::error::ErrorServiceUnavailable("Work directory is locked"),
-            ));
-        }
-    };
-
-    let id = path.into_inner();
-    if let Some(item) = workdir.crawled.items.get(&id) {
-        if let Some(first_file) = item.flat_files().keys().next() {
-            Ok(HttpResponse::Found()
-                .append_header((
-                    "Location",
-                    format!(
-                        "/{}/booru/item/{}/{}",
-                        site.0,
-                        encode(&id),
-                        encode(first_file)
-                    ),
-                ))
-                .finish())
-        } else {
-            Ok(HttpResponse::NotFound().finish())
-        }
-    } else {
-        Ok(HttpResponse::NotFound().finish())
-    }
-}
-
-#[get("/item/{id}/{file_index}")]
-pub async fn item_handler(
-    site: web::Data<super::WorkDirPrefix>,
-    workdir: web::Data<super::ThreadSafeWorkDir>,
-    path: web::Path<(String, String)>,
-) -> Result<HttpResponse, actix_web::Error> {
-    let workdir_data = workdir.into_inner();
-    let workdir_lock = workdir_data.work_dir.try_read();
-    let workdir = match workdir_lock {
-        Ok(x) => x,
-        Err(_) => {
-            return Err(actix_web::Error::from(
-                actix_web::error::ErrorServiceUnavailable("Work directory is locked"),
-            ));
-        }
-    };
-
-    let (id, file_index) = path.into_inner();
-    if let Some(item) = workdir.crawled.items.get(&id) {
-        let content = html! {
-            article.post {
-                h1 { (item.title) }
-                @if let Some(thumb) = item.thumbnail_path() {
-                    img src=(format!("/{}/assets/{}", site.0, thumb)) alt=(item.title) {}
+        article.post {
+            h1 { (item.title) }
+            .post_content {
+                @match file {
+                    FileCrawlType::Image { filename, downloaded, .. } => {
+                        @if *downloaded {
+                            figure.post_figure {
+                                img.post_image src=(format!("/{}/assets/{}", site, filename)) alt=(item.title) {}
+                            }
+                        }
+                    }
+                    FileCrawlType::Video { filename, downloaded, .. } => {
+                        @if *downloaded {
+                            @let coerced_filename = filename.split('.').next().unwrap_or("").to_string() + ".mp4";
+                            figure.post_figure {
+                                video.post_video controls {
+                                    source src=(format!("/{}/assets/{}", site, coerced_filename)) {}
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
                 }
-                p { (item.description) }
-                .tags {
-                    @for tag in &item.tags {
-                        @match tag {
-                            crate::site::CrawlTag::Simple(x) =>
-                                a.tag href=(format!("/{}/booru/tag/{}", site.0, encode(x))) { (x) },
-                            crate::site::CrawlTag::Detailed { value, .. } =>
-                                a.tag href=(format!("/{}/booru/tag/{}", site.0, encode(value))) { (value) },
+
+                .post_description {
+                    p { (item.description) }
+                }
+
+                @if !item.meta.is_object() || !item.meta.as_object().unwrap().is_empty() {
+                    .post_meta {
+                        @for (key, value) in item.meta.as_object().unwrap() {
+                            .meta_item {
+                                span.meta_key { (key) ": " }
+                                span.meta_value { (value) }
+                            }
                         }
                     }
                 }
             }
-        };
-        Ok(HttpResponse::Ok().body(booru_layout(&item.title, content, &site.0).into_string()))
-    } else {
-        Ok(HttpResponse::NotFound().finish())
-    }
+            footer.post_footer {
+                .post_tags {
+                    @for tag in &item.tags {
+                        @match tag {
+                            CrawlTag::Simple(x) =>
+                                a.post_tag href=(format!("/{}/booru/tag/{}", site, encode(x))) { (x) },
+                            CrawlTag::Detailed { value, .. } =>
+                                a.post_tag href=(format!("/{}/booru/tag/{}", site, encode(value))) { (value) },
+                        }
+                    }
+                }
+                p.post_source {
+                    "Source: "
+                    a href=(item.url) { (item.url) }
+                }
+            }
+        }
+    };
+
+    booru_layout(&item.title, content, &site)
 }
 
-#[get("/items/{id}")]
-pub async fn item_redirect(path: web::Path<String>) -> impl Responder {
-    let id = path.into_inner();
-    HttpResponse::Found()
-        .append_header(("Location", format!("/blog/item/{}", id)))
-        .finish()
+pub fn render_tags_page(work_dir: &ThreadSafeWorkDir, tags: &HashMap<String, usize>) -> Markup {
+    let workdir = work_dir.work_dir.read().unwrap();
+    let site = workdir.config.slug.clone();
+
+    let content = html! {
+        .tag_list_page {
+            h2 { "Tags" }
+            ul.tag_list {
+                @for (tag, count) in tags {
+                    li.tag_item {
+                        a href=(format!("/{}/booru/tag/{}", site, encode(tag))) {
+                            span.tag_name { (tag) }
+                            span.tag_count { " (" (count) ")" }
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    booru_layout("Tags", content, &site)
 }
 
-pub fn configure_booru(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/booru")
-            .service(random_handler)
-            .service(latest_handler)
-            .service(latest_page_handler)
-            .service(oldest_handler)
-            .service(oldest_page_handler)
-            .service(root_redirect)
-            .service(tag_handler)
-            .service(tag_page_handler)
-            .service(item_no_file_handler)
-            .service(item_handler)
-            .service(item_redirect),
-    );
+pub fn render_archive_page(
+    work_dir: &ThreadSafeWorkDir,
+    archive: &HashMap<(i32, u8), usize>,
+) -> Markup {
+    let workdir = work_dir.work_dir.read().unwrap();
+    let site = workdir.config.slug.clone();
+
+    let content = html! {
+        .archive_page {
+            h2 { "Archive" }
+            ul.archive_list {
+                @for ((year, month), count) in archive {
+                    li.archive_item {
+                        a href=(format!("/{}/booru/archive/{}/{:02}", site, year, month)) {
+                            span.archive_date { (format!("{}/{:02}", year, month)) }
+                            span.archive_count { " (" (count) ")" }
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    booru_layout("Archive", content, &site)
 }
