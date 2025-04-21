@@ -11,6 +11,7 @@ use super::{ListingPageConfig, ListingPageMode};
 // Helper functions for rendering booru components
 fn booru_layout(title: &str, content: Markup, site: &str) -> Markup {
     html! {
+        (super::Css("/res/styles.css"))
         .booru_layout {
             header.booru_header {
                 nav.booru_nav {
