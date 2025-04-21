@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 use urlencoding::encode;
 
 use super::{ListingPageConfig, ListingPageMode};
+use crate::handlers::PaginatorPrefix;
 use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
 use crate::thread_safe_work_dir::ThreadSafeWorkDir;
 
@@ -17,7 +18,7 @@ fn blog_post_card(item: &CrawlItem, site: &str) -> Markup {
         article.blog_post_card {
             header.post_header {
                 h3.post_title {
-                    a href=(format!("/{}/blog/post/{}", site, encode(&item.key))) { (item.title) }
+                    a href=(format!("/{}/blog/item/{}", site, encode(&item.key))) { (item.title) }
                 }
                 .post_meta {
                     time datetime=(time.to_rfc3339()) {
@@ -99,7 +100,7 @@ pub fn render_listing_page(
                 (blog_post_card(item, &site))
             }
         }
-        (super::paginator(config.page, config.total, config.per_page, &format!("/{}/blog/page", &site)))
+        (super::paginator(config.page, config.total, config.per_page, &config.paginator_prefix(&site, "blog")))
     };
 
     blog_layout(&title, content, &site)

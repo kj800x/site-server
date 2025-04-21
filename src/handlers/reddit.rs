@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use urlencoding::encode;
 
 use super::{ListingPageConfig, ListingPageMode};
+use crate::handlers::PaginatorPrefix;
 use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
 use crate::thread_safe_work_dir::ThreadSafeWorkDir;
 
@@ -61,7 +62,7 @@ fn reddit_post_card(item: &CrawlItem, site: &str) -> Markup {
             }
             .post_content {
                 h2.post_title {
-                    a href=(format!("/{}/r/post/{}", site, encode(&item.key))) { (item.title) }
+                    a href=(format!("/{}/r/item/{}", site, encode(&item.key))) { (item.title) }
                 }
                 @if let Some(thumb) = item.thumbnail_path() {
                     .post_preview {
@@ -107,7 +108,8 @@ pub fn render_listing_page(
                 (reddit_post_card(item, &site))
             }
         }
-        (super::paginator(config.page, config.total, config.per_page, &format!("/{}/r/page", &site)))
+        // FIXME: Don't include a paginator if the sort order is random
+        (super::paginator(config.page, config.total, config.per_page, &config.paginator_prefix(&site, "r")))
     };
 
     reddit_layout(&title, content, &site)
