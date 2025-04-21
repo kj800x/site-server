@@ -136,7 +136,9 @@ impl SiteRenderer for SiteRendererType {
         config: ListingPageConfig,
         items: &[CrawlItem],
     ) -> Markup {
-        todo!()
+        html! {
+            h1 { "Test Listing Page" }
+        }
     }
 
     fn render_detail_page(
@@ -145,7 +147,9 @@ impl SiteRenderer for SiteRendererType {
         item: &CrawlItem,
         file: &FileCrawlType,
     ) -> Markup {
-        todo!()
+        html! {
+            h1 { "Test Detail Page" }
+        }
     }
 
     fn render_tags_page(
@@ -153,7 +157,9 @@ impl SiteRenderer for SiteRendererType {
         work_dir: &ThreadSafeWorkDir,
         tags: &HashMap<String, usize>,
     ) -> Markup {
-        todo!()
+        html! {
+            h1 { "Test Tags Page" }
+        }
     }
 
     fn render_archive_page(
@@ -161,7 +167,9 @@ impl SiteRenderer for SiteRendererType {
         work_dir: &ThreadSafeWorkDir,
         archive: &HashMap<(i32, u8), usize>,
     ) -> Markup {
-        todo!()
+        html! {
+            h1 { "Test Archive Page" }
+        }
     }
 
     fn get_prefix(&self) -> &str {

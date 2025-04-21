@@ -175,20 +175,6 @@ async fn run() -> errors::Result<()> {
                         handlers::SiteRendererType::Reddit,
                     ];
 
-                    app = app.service(
-                        web::scope(&slug)
-                            .app_data(web::Data::new(workdir.clone()))
-                            .app_data(web::Data::new(WorkDirPrefix(slug.clone())))
-                            .service(info_handler)
-                            .service(
-                                Files::new(
-                                    "/assets",
-                                    workdir.work_dir.read().unwrap().path.clone(),
-                                )
-                                .prefer_utf8(true),
-                            ),
-                    );
-
                     for renderer in renderers.iter() {
                         println!("Adding renderer: {}", renderer.get_prefix());
                         app = app.service(
@@ -210,6 +196,20 @@ async fn run() -> errors::Result<()> {
                                 .service(generic_detail_redirect),
                         );
                     }
+
+                    app = app.service(
+                        web::scope(&slug)
+                            .app_data(web::Data::new(workdir.clone()))
+                            .app_data(web::Data::new(WorkDirPrefix(slug.clone())))
+                            .service(info_handler)
+                            .service(
+                                Files::new(
+                                    "/assets",
+                                    workdir.work_dir.read().unwrap().path.clone(),
+                                )
+                                .prefer_utf8(true),
+                            ),
+                    );
                 }
 
                 app

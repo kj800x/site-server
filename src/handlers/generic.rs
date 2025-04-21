@@ -71,7 +71,11 @@ fn apply_selection(items: &[CrawlItem], config: &ListingPageConfig) -> Vec<Crawl
     };
     let start = (config.page - 1) * config.per_page;
     let end = start + config.per_page;
-    items[start..end].to_vec()
+    if end > items.len() {
+        items[start..].to_vec()
+    } else {
+        items[start..end].to_vec()
+    }
 }
 
 #[get("")]
@@ -82,7 +86,7 @@ pub async fn generic_index_handler(
     HttpResponse::SeeOther()
         .append_header((
             "Location",
-            format!("{}/{}/latest", workdir_prefix.0, renderer.get_prefix()),
+            format!("/{}/{}/latest", workdir_prefix.0, renderer.get_prefix()),
         ))
         .finish()
 }
@@ -95,7 +99,7 @@ pub async fn generic_index_root_handler(
     HttpResponse::SeeOther()
         .append_header((
             "Location",
-            format!("{}/{}/latest", workdir_prefix.0, renderer.get_prefix()),
+            format!("/{}/{}/latest", workdir_prefix.0, renderer.get_prefix()),
         ))
         .finish()
 }
@@ -345,7 +349,7 @@ pub async fn generic_detail_redirect(
         .append_header((
             "Location",
             format!(
-                "{}/{}/detail/{}/{}",
+                "/{}/{}/detail/{}/{}",
                 workdir_prefix.0,
                 renderer.get_prefix(),
                 id,
