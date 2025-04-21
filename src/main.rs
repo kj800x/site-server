@@ -16,13 +16,17 @@ use std::io::Read;
 use std::{thread, time::Duration};
 
 use site_server::{
-    errors, handlers, serve_static_file, thread_safe_work_dir, workdir,
+    errors,
+    handlers::{
+        self, generic_archive_index_handler, generic_archive_page_handler, generic_detail_handler,
+        generic_detail_redirect, generic_index_handler, generic_index_root_handler,
+        generic_latest_handler, generic_oldest_handler, generic_random_handler,
+        generic_tag_handler, generic_tag_page_handler, generic_tags_index_handler, SiteRenderer,
+    },
+    serve_static_file, thread_safe_work_dir, workdir,
 };
 
-use handlers::{
-    configure_blog, configure_booru, configure_reddit, date_time_element, get_workdir,
-    ThreadSafeWorkDir, WorkDirPrefix,
-};
+use handlers::{date_time_element, get_workdir, ThreadSafeWorkDir, WorkDirPrefix};
 use thread_safe_work_dir::ThreadSafeWorkDir as ThreadSafeWorkDirImpl;
 use workdir::WorkDir;
 
@@ -163,21 +167,19 @@ async fn run() -> errors::Result<()> {
                     .service(root_index_handler);
 
                 for workdir in work_dirs_vec.iter() {
+                    let slug = workdir.work_dir.read().unwrap().config.slug.clone();
+
+                    let renderers = vec![
+                        handlers::SiteRendererType::Blog,
+                        handlers::SiteRendererType::Booru,
+                        handlers::SiteRendererType::Reddit,
+                    ];
+
                     app = app.service(
-                        web::scope(&workdir.work_dir.read().unwrap().config.slug)
+                        web::scope(&slug)
                             .app_data(web::Data::new(workdir.clone()))
-                            .app_data(web::Data::new(WorkDirPrefix(
-                                workdir.work_dir.read().unwrap().config.slug.clone(),
-                            )))
-                            // Add info handler at site root level
+                            .app_data(web::Data::new(WorkDirPrefix(slug.clone())))
                             .service(info_handler)
-                            // Add a /booru scope for imageboard style routes
-                            .configure(configure_booru)
-                            // Add a /blog scope for blogger style routes
-                            .configure(configure_blog)
-                            // Add Reddit style routes
-                            .configure(configure_reddit)
-                            // Keep assets at the site root level since they're shared across views
                             .service(
                                 Files::new(
                                     "/assets",
@@ -186,6 +188,28 @@ async fn run() -> errors::Result<()> {
                                 .prefer_utf8(true),
                             ),
                     );
+
+                    for renderer in renderers.iter() {
+                        println!("Adding renderer: {}", renderer.get_prefix());
+                        app = app.service(
+                            web::scope(&format!("{}/{}", slug, renderer.get_prefix()))
+                                .app_data(web::Data::new(workdir.clone()))
+                                .app_data(web::Data::new(renderer.clone()))
+                                .app_data(web::Data::new(WorkDirPrefix(slug.clone())))
+                                .service(generic_index_handler)
+                                .service(generic_index_root_handler)
+                                .service(generic_random_handler)
+                                .service(generic_latest_handler)
+                                .service(generic_oldest_handler)
+                                .service(generic_tags_index_handler)
+                                .service(generic_tag_handler)
+                                .service(generic_tag_page_handler)
+                                .service(generic_archive_index_handler)
+                                .service(generic_archive_page_handler)
+                                .service(generic_detail_handler)
+                                .service(generic_detail_redirect),
+                        );
+                    }
                 }
 
                 app
