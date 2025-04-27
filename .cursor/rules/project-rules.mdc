@@ -1,6 +1,7 @@
 ---
-description: General understanding of the project
-globs: *.rs
+description:
+globs:
+alwaysApply: true
 ---
 # Site Server - Project Rules
 
@@ -13,33 +14,48 @@ globs: *.rs
 - **Actix Web (v4)**: The primary web framework used for handling HTTP requests, routing, and serving content.
 - **SQLite**: Used with r2d2 connection pooling for database operations.
 - **Maud**: Template engine for HTML generation.
+- **Clap**: Command-line argument parsing.
 
 ### Security
 - **HTTP Basic Authentication**: Implemented using `actix-web-httpauth`, controlled via environment variables:
   - `BASIC_AUTH_USERNAME`: Username for authentication
   - `BASIC_AUTH_PASSWORD`: Password for authentication
   - When not set, authentication is disabled
+- **Session Management**: Using `actix-session` with cookie-based sessions
 
 ### Error Handling
 - **thiserror**: For defining application error types and handling error propagation
 - Custom `ResultExt` trait providing context-adding capability through the `.context()` method
 
 ### Frontend
-- Custom HTML/CSS with Maud templates used for server-side rendering.
-- No dedicated JavaScript framework is used; UI is primarily server-rendered.
+- Custom HTML/CSS with Maud templates used for server-side rendering
+- Multiple view implementations:
+  - Booru-style view
+  - Blog-style view
+  - Reddit-style view
+- Minimal JavaScript usage, primarily for detail page interactions
 
 ### Observability
-- OpenTelemetry with Prometheus metrics integration for monitoring.
+- OpenTelemetry with Prometheus metrics integration for monitoring
+- Prometheus metrics endpoint at `/api/metrics`
+- Request tracing and metrics middleware
 
 ## Code Organization
 
 ### Module Structure
-- **main.rs**: Contains application setup, route handlers, server configuration, and authentication setup.
-- **site.rs**: Defines the domain models for crawled content (CrawlItem, FileCrawlType, etc.).
-- **workdir.rs**: Manages the working directory and configuration for the application.
-- **collections.rs**: Provides collection-related utilities and traits.
-- **errors.rs**: Error handling functionality using the thiserror crate and custom context extension.
-- **serde.rs**: Custom serialization/deserialization functions.
+- **main.rs**: Contains application setup, route handlers, server configuration, and authentication setup
+- **handlers/**: Contains route handlers and view implementations
+  - **generic.rs**: Common handler logic
+  - **booru.rs**: Booru-style view implementation
+  - **blog.rs**: Blog-style view implementation
+  - **reddit.rs**: Reddit-style view implementation
+  - **common.rs**: Shared handler utilities
+- **site.rs**: Defines the domain models for crawled content (CrawlItem, FileCrawlType, etc.)
+- **workdir.rs**: Manages the working directory and configuration for the application
+- **thread_safe_work_dir.rs**: Thread-safe wrapper for WorkDir operations
+- **collections.rs**: Provides collection-related utilities and traits
+- **errors.rs**: Error handling functionality using the thiserror crate and custom context extension
+- **serde.rs**: Custom serialization/deserialization functions
 
 ## Coding Patterns and Conventions
 
@@ -52,10 +68,13 @@ globs: *.rs
 - HTTP Basic Auth guards all routes including static assets
 - Authentication is optional, controlled via environment variables
 - When authentication credentials are not set, the server operates in open mode
+- Session management for maintaining user state
 
 ### API Design
-- RESTful routes for content navigation.
-- HTML responses for web UI, with some JSON endpoints.
+- RESTful routes for content navigation
+- Multiple view implementations for different content display styles
+- HTML responses for web UI, with some JSON endpoints
+- Support for pagination, tags, and archive views
 
 ### Code Style
 - Follows standard Rust naming conventions:
@@ -69,22 +88,26 @@ globs: *.rs
 - Uses serde for serialization/deserialization
 - Custom serialization/deserialization functions for complex data structures
 - IndexMap is used extensively for ordered map operations
+- Support for different text formats (Markdown, Plaintext, HTML)
 
 ## Development Patterns
 
 ### Organization
 - Modular code organization with clear separation of concerns
-- Route handlers are grouped by functionality in main.rs
+- Route handlers are grouped by functionality in handlers directory
 - Models are defined in their respective domain modules
+- View implementations are separated by style (booru, blog, reddit)
 
 ### UI Components
 - UI components are implemented as Rust structs that implement the Render trait from Maud
 - Page layout is consistent across different views
+- Support for multiple view styles with shared common components
 
 ### Route Structure
 - Routes follow a logical hierarchy with clean URLs
 - Support for pagination in list views
 - API endpoints for data and file serving
+- Multiple view implementations with consistent URL patterns
 
 ## Deployment
 
@@ -94,7 +117,11 @@ globs: *.rs
 - `LISTEN_ADDRESS`: IP address to bind the server (defaults to 127.0.0.1)
 - `ALLOW_NO_FILES`: If set, items without downloaded files are included in listings
 
-## Future Roadmap (from TODO.md)
+### Docker Support
+- Dockerfile provided for containerized deployment
+- Docker-specific configuration and setup scripts
+
+## Current Roadmap (from TODO.md)
 - Improved text and description support
 - Additional view implementations (Reddit-style, blog style, updates style)
 - Video transcoding improvements
@@ -103,19 +130,24 @@ globs: *.rs
 
 ## Best Practices to Follow
 
-1. **Maintain Type Safety**: Continue using Rust's type system for strong guarantees.
-2. **Error Handling**: Use the `.context()` method for adding context to errors instead of `.unwrap()` or `.expect()`.
-3. **Consistent Naming**: Follow the established snake_case for functions and variables, CamelCase for types.
-4. **HTML Generation**: Use Maud templates consistently for HTML generation.
-5. **Authentication**: Configure authentication for production environments.
-6. **Serialization**: Follow the established patterns for serde serialization/deserialization.
-7. **Route Organization**: Group related routes together in main.rs.
-8. **Modular Design**: Keep domain logic in appropriate modules.
+1. **Maintain Type Safety**: Continue using Rust's type system for strong guarantees
+2. **Error Handling**: Use the `.context()` method for adding context to errors instead of `.unwrap()` or `.expect()`
+3. **Consistent Naming**: Follow the established snake_case for functions and variables, CamelCase for types
+4. **HTML Generation**: Use Maud templates consistently for HTML generation
+5. **Authentication**: Configure authentication for production environments
+6. **Serialization**: Follow the established patterns for serde serialization/deserialization
+7. **Route Organization**: Group related routes together in handlers directory
+8. **Modular Design**: Keep domain logic in appropriate modules
+9. **View Implementation**: Maintain consistency across different view styles
+10. **Thread Safety**: Use ThreadSafeWorkDir for concurrent access to work directories
 
 ## Anti-patterns to Avoid
 
-1. **Mixing HTML Generation Styles**: Don't mix raw string HTML with Maud templates.
-2. **Inconsistent Error Handling**: Don't return Option where Result with proper error context is expected.
-3. **Tight Coupling**: Keep domain logic separate from web handling logic.
-4. **Type Conversion**: Avoid unnecessary type conversions and cloning.
-5. **Ignoring Errors**: Don't use .unwrap() or .expect() in production code paths.
+1. **Mixing HTML Generation Styles**: Don't mix raw string HTML with Maud templates
+2. **Inconsistent Error Handling**: Don't return Option where Result with proper error context is expected
+3. **Tight Coupling**: Keep domain logic separate from web handling logic
+4. **Type Conversion**: Avoid unnecessary type conversions and cloning
+5. **Ignoring Errors**: Don't use .unwrap() or .expect() in production code paths
+6. **Direct WorkDir Access**: Always use ThreadSafeWorkDir for concurrent access
+7. **Hardcoded Configuration**: Use environment variables for configuration
+8. **Inconsistent View Implementation**: Maintain consistent patterns across different view styles
