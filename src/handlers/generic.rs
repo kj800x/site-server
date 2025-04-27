@@ -56,8 +56,8 @@ fn resolve_listing_page(
 fn apply_selection(items: &[CrawlItem], config: &ListingPageConfig) -> Vec<CrawlItem> {
     let mut items = items.to_vec();
     match config.ordering {
-        ListingPageOrdering::NewestFirst => items.sort_by_key(|item| item.source_published),
-        ListingPageOrdering::OldestFirst => items.sort_by_key(|item| -item.source_published),
+        ListingPageOrdering::NewestFirst => items.sort_by_key(|item| -item.source_published),
+        ListingPageOrdering::OldestFirst => items.sort_by_key(|item| item.source_published),
         ListingPageOrdering::Random => items.shuffle(&mut rand::thread_rng()),
     };
     let start = (config.page - 1) * config.per_page;
