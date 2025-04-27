@@ -24,17 +24,11 @@ fn timeago(timestamp: u64) -> String {
     }
 }
 
-fn reddit_layout(title: &str, content: Markup, site: &str) -> Markup {
+fn reddit_layout(title: &str, content: Markup, site: &str, route: &str) -> Markup {
     html! {
         (super::Css("/res/styles.css"))
+        (super::header(site, "r", route))
         .reddit_layout {
-            header.reddit_header {
-                nav.reddit_nav {
-                    a href=(format!("/{}/r", site)) { "Home" }
-                    a href=(format!("/{}/r/tags", site)) { "Tags" }
-                    a href=(format!("/{}/r/archive", site)) { "Archive" }
-                }
-            }
             main.reddit_main {
                 @if !title.is_empty() {
                     h1.page_title { (title) }
@@ -90,6 +84,7 @@ pub fn render_listing_page(
     work_dir: &ThreadSafeWorkDir,
     config: ListingPageConfig,
     items: &[CrawlItem],
+    route: &str,
 ) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
@@ -112,13 +107,14 @@ pub fn render_listing_page(
         (super::paginator(config.page, config.total, config.per_page, &config.paginator_prefix(&site, "r")))
     };
 
-    reddit_layout(&title, content, &site)
+    reddit_layout(&title, content, &site, route)
 }
 
 pub fn render_detail_page(
     work_dir: &ThreadSafeWorkDir,
     item: &CrawlItem,
     file: &FileCrawlType,
+    route: &str,
 ) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
@@ -197,10 +193,14 @@ pub fn render_detail_page(
         }
     };
 
-    reddit_layout("", content, &site)
+    reddit_layout("", content, &site, route)
 }
 
-pub fn render_tags_page(work_dir: &ThreadSafeWorkDir, tags: &HashMap<String, usize>) -> Markup {
+pub fn render_tags_page(
+    work_dir: &ThreadSafeWorkDir,
+    tags: &HashMap<String, usize>,
+    route: &str,
+) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
 
@@ -220,12 +220,13 @@ pub fn render_tags_page(work_dir: &ThreadSafeWorkDir, tags: &HashMap<String, usi
         }
     };
 
-    reddit_layout("Tags", content, &site)
+    reddit_layout("Tags", content, &site, route)
 }
 
 pub fn render_archive_page(
     work_dir: &ThreadSafeWorkDir,
     archive: &HashMap<(i32, u8), usize>,
+    route: &str,
 ) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
@@ -246,5 +247,5 @@ pub fn render_archive_page(
         }
     };
 
-    reddit_layout("Archive", content, &site)
+    reddit_layout("Archive", content, &site, route)
 }

@@ -1,12 +1,3 @@
-// .service(generic_index_handler)
-// .service(generic_index_page_handler)
-// .service(generic_tags_index_handler)
-// .service(generic_tag_handler)
-// .service(generic_tag_page_handler)
-// .service(generic_archive_handler)
-// .service(generic_archive_page_handler)
-// .service(generic_detail_handler),
-
 use std::collections::HashMap;
 
 use actix_web::{get, web, HttpResponse, Responder};
@@ -120,7 +111,7 @@ pub async fn generic_random_handler(
     };
     let items = apply_selection(&items, &config);
 
-    renderer.render_listing_page(&workdir, config, &items)
+    renderer.render_listing_page(&workdir, config, &items, &format!("/random"))
 }
 
 #[get("/latest")]
@@ -139,7 +130,7 @@ pub async fn generic_latest_handler(
     };
     let items = apply_selection(&items, &config);
 
-    renderer.render_listing_page(&workdir, config, &items)
+    renderer.render_listing_page(&workdir, config, &items, &format!("/latest"))
 }
 
 #[get("/latest/{page}")]
@@ -153,13 +144,13 @@ pub async fn generic_latest_page_handler(
     let config = ListingPageConfig {
         mode: ListingPageMode::All,
         ordering: ListingPageOrdering::NewestFirst,
-        page: page.into_inner(),
+        page: page.clone(),
         per_page: 10,
         total: items.len(),
     };
     let items = apply_selection(&items, &config);
 
-    renderer.render_listing_page(&workdir, config, &items)
+    renderer.render_listing_page(&workdir, config, &items, &format!("/latest/{page}"))
 }
 
 #[get("/oldest")]
@@ -178,7 +169,7 @@ pub async fn generic_oldest_handler(
     };
     let items = apply_selection(&items, &config);
 
-    renderer.render_listing_page(&workdir, config, &items)
+    renderer.render_listing_page(&workdir, config, &items, &format!("/oldest"))
 }
 
 #[get("/oldest/{page}")]
@@ -192,13 +183,13 @@ pub async fn generic_oldest_page_handler(
     let config = ListingPageConfig {
         mode: ListingPageMode::All,
         ordering: ListingPageOrdering::OldestFirst,
-        page: page.into_inner(),
+        page: page.clone(),
         per_page: 10,
         total: items.len(),
     };
     let items = apply_selection(&items, &config);
 
-    renderer.render_listing_page(&workdir, config, &items)
+    renderer.render_listing_page(&workdir, config, &items, &format!("/oldest/{page}"))
 }
 
 #[get("/tags")]
@@ -224,7 +215,7 @@ pub async fn generic_tags_index_handler(
         tags
     };
 
-    renderer.render_tags_page(&workdir, &tags)
+    renderer.render_tags_page(&workdir, &tags, &format!("/tags"))
 }
 
 #[get("/tag/{tag}")]
@@ -244,7 +235,7 @@ pub async fn generic_tag_handler(
     };
     let items = apply_selection(&items, &config);
 
-    renderer.render_listing_page(&workdir, config, &items)
+    renderer.render_listing_page(&workdir, config, &items, &format!("/tag/{tag}"))
 }
 
 #[get("/tag/{tag}/{page}")]
@@ -271,7 +262,12 @@ pub async fn generic_tag_page_handler(
     };
     let items = apply_selection(&items, &config);
 
-    renderer.render_listing_page(&workdir, config, &items)
+    renderer.render_listing_page(
+        &workdir,
+        config,
+        &items,
+        &format!("/tag/{}/{}", path.0, path.1),
+    )
 }
 
 #[get("/archive")]
@@ -296,7 +292,7 @@ pub async fn generic_archive_index_handler(
         archive
     };
 
-    renderer.render_archive_page(&workdir, &archive)
+    renderer.render_archive_page(&workdir, &archive, &format!("/archive"))
 }
 
 #[get("/archive/{year}/{month}")]
@@ -325,7 +321,12 @@ pub async fn generic_archive_page_handler(
     };
     let items = apply_selection(&items, &config);
 
-    renderer.render_listing_page(&workdir, config, &items)
+    renderer.render_listing_page(
+        &workdir,
+        config,
+        &items,
+        &format!("/archive/{}/{}", page.0, page.1),
+    )
 }
 
 #[get("/item/{id}")]
@@ -375,5 +376,5 @@ pub async fn generic_detail_handler(
 
     let file = { item.files.get(&file_id).unwrap().clone() };
 
-    renderer.render_detail_page(&workdir, &item, &file)
+    renderer.render_detail_page(&workdir, &item, &file, &format!("/item/{id}/{file_id}"))
 }

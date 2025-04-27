@@ -34,6 +34,44 @@ impl maud::Render for Js {
     }
 }
 
+pub fn header(site_prefix: &str, rendering_prefix: &str, current_route: &str) -> Markup {
+    html! {
+        header.page-header {
+            nav {
+                span .root-link {
+                    a href="/" { (site_prefix) }
+                }
+                span .rendering-mode .active[rendering_prefix == "booru"] {
+                    a href=(format!("/{}/booru{}", site_prefix, current_route)) { "Booru"}
+                }
+                span .rendering-mode .active[rendering_prefix == "blog"] {
+                    a href=(format!("/{}/blog{}", site_prefix, current_route)) { "Blog"}
+                }
+                span .rendering-mode .active[rendering_prefix == "r"] {
+                    a href=(format!("/{}/r{}", site_prefix, current_route)) { "Reddit"}
+                }
+            }
+            nav.sub-nav {
+                span .active[current_route.starts_with("/latest")] {
+                    a href=(format!("/{}/{}/latest", site_prefix, rendering_prefix)) { "Latest"}
+                }
+                span .active[current_route.starts_with("/oldest")] {
+                    a href=(format!("/{}/{}/oldest", site_prefix, rendering_prefix)) { "Oldest"}
+                }
+                span .active[current_route.starts_with("/random")] {
+                    a href=(format!("/{}/{}/random", site_prefix, rendering_prefix)) { "Random"}
+                }
+                span .active[current_route.starts_with("/tags") || current_route.starts_with("/tag")] {
+                    a href=(format!("/{}/{}/tags", site_prefix, rendering_prefix)) { "Tags"}
+                }
+                span .active[current_route.starts_with("/archive")] {
+                    a href=(format!("/{}/{}/archive", site_prefix, rendering_prefix)) { "Archive"}
+                }
+            }
+        }
+    }
+}
+
 pub fn paginator(page: usize, total: usize, per_page: usize, prefix: &str) -> Markup {
     let pages = (total + per_page - 1) / per_page;
     let mut links = vec![];
@@ -140,22 +178,26 @@ pub trait SiteRenderer {
         work_dir: &ThreadSafeWorkDir,
         config: ListingPageConfig,
         items: &[CrawlItem],
+        route: &str,
     ) -> Markup;
     fn render_detail_page(
         &self,
         work_dir: &ThreadSafeWorkDir,
         item: &CrawlItem,
         file: &FileCrawlType,
+        route: &str,
     ) -> Markup;
     fn render_tags_page(
         &self,
         work_dir: &ThreadSafeWorkDir,
         tags: &HashMap<String, usize>,
+        route: &str,
     ) -> Markup;
     fn render_archive_page(
         &self,
         work_dir: &ThreadSafeWorkDir,
         archive: &HashMap<(i32, u8), usize>,
+        route: &str,
     ) -> Markup;
     fn get_prefix(&self) -> &str;
 }
@@ -166,11 +208,12 @@ impl SiteRenderer for SiteRendererType {
         work_dir: &ThreadSafeWorkDir,
         config: ListingPageConfig,
         items: &[CrawlItem],
+        route: &str,
     ) -> Markup {
         match self {
-            SiteRendererType::Blog => blog::render_listing_page(work_dir, config, items),
-            SiteRendererType::Booru => booru::render_listing_page(work_dir, config, items),
-            SiteRendererType::Reddit => reddit::render_listing_page(work_dir, config, items),
+            SiteRendererType::Blog => blog::render_listing_page(work_dir, config, items, route),
+            SiteRendererType::Booru => booru::render_listing_page(work_dir, config, items, route),
+            SiteRendererType::Reddit => reddit::render_listing_page(work_dir, config, items, route),
         }
     }
 
@@ -179,11 +222,12 @@ impl SiteRenderer for SiteRendererType {
         work_dir: &ThreadSafeWorkDir,
         item: &CrawlItem,
         file: &FileCrawlType,
+        route: &str,
     ) -> Markup {
         match self {
-            SiteRendererType::Blog => blog::render_detail_page(work_dir, item, file),
-            SiteRendererType::Booru => booru::render_detail_page(work_dir, item, file),
-            SiteRendererType::Reddit => reddit::render_detail_page(work_dir, item, file),
+            SiteRendererType::Blog => blog::render_detail_page(work_dir, item, file, route),
+            SiteRendererType::Booru => booru::render_detail_page(work_dir, item, file, route),
+            SiteRendererType::Reddit => reddit::render_detail_page(work_dir, item, file, route),
         }
     }
 
@@ -191,11 +235,12 @@ impl SiteRenderer for SiteRendererType {
         &self,
         work_dir: &ThreadSafeWorkDir,
         tags: &HashMap<String, usize>,
+        route: &str,
     ) -> Markup {
         match self {
-            SiteRendererType::Blog => blog::render_tags_page(work_dir, tags),
-            SiteRendererType::Booru => booru::render_tags_page(work_dir, tags),
-            SiteRendererType::Reddit => reddit::render_tags_page(work_dir, tags),
+            SiteRendererType::Blog => blog::render_tags_page(work_dir, tags, route),
+            SiteRendererType::Booru => booru::render_tags_page(work_dir, tags, route),
+            SiteRendererType::Reddit => reddit::render_tags_page(work_dir, tags, route),
         }
     }
 
@@ -203,11 +248,12 @@ impl SiteRenderer for SiteRendererType {
         &self,
         work_dir: &ThreadSafeWorkDir,
         archive: &HashMap<(i32, u8), usize>,
+        route: &str,
     ) -> Markup {
         match self {
-            SiteRendererType::Blog => blog::render_archive_page(work_dir, archive),
-            SiteRendererType::Booru => booru::render_archive_page(work_dir, archive),
-            SiteRendererType::Reddit => reddit::render_archive_page(work_dir, archive),
+            SiteRendererType::Blog => blog::render_archive_page(work_dir, archive, route),
+            SiteRendererType::Booru => booru::render_archive_page(work_dir, archive, route),
+            SiteRendererType::Reddit => reddit::render_archive_page(work_dir, archive, route),
         }
     }
 

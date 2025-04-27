@@ -50,17 +50,11 @@ fn blog_post_card(item: &CrawlItem, site: &str) -> Markup {
     }
 }
 
-fn blog_layout(title: &str, content: Markup, site: &str) -> Markup {
+fn blog_layout(title: &str, content: Markup, site: &str, route: &str) -> Markup {
     html! {
         (super::Css("/res/styles.css"))
+        (super::header(site, "blog", route))
         .blogger_layout {
-            header.blogger_header {
-                nav.blog_nav {
-                    a href=(format!("/{}/blog", site)) { "Home" }
-                    a href=(format!("/{}/blog/tags", site)) { "Tags" }
-                    a href=(format!("/{}/blog/archive", site)) { "Archive" }
-                }
-            }
             .blogger_content {
                 main.blog_main {
                     @if !title.is_empty() {
@@ -78,6 +72,7 @@ pub fn render_listing_page(
     work_dir: &ThreadSafeWorkDir,
     config: ListingPageConfig,
     items: &[CrawlItem],
+    route: &str,
 ) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
@@ -103,13 +98,14 @@ pub fn render_listing_page(
         (super::paginator(config.page, config.total, config.per_page, &config.paginator_prefix(&site, "blog")))
     };
 
-    blog_layout(&title, content, &site)
+    blog_layout(&title, content, &site, route)
 }
 
 pub fn render_detail_page(
     work_dir: &ThreadSafeWorkDir,
     item: &CrawlItem,
     file: &FileCrawlType,
+    route: &str,
 ) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
@@ -184,10 +180,14 @@ pub fn render_detail_page(
         }
     };
 
-    blog_layout("", content, &site)
+    blog_layout("", content, &site, route)
 }
 
-pub fn render_tags_page(work_dir: &ThreadSafeWorkDir, tags: &HashMap<String, usize>) -> Markup {
+pub fn render_tags_page(
+    work_dir: &ThreadSafeWorkDir,
+    tags: &HashMap<String, usize>,
+    route: &str,
+) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
 
@@ -207,12 +207,13 @@ pub fn render_tags_page(work_dir: &ThreadSafeWorkDir, tags: &HashMap<String, usi
         }
     };
 
-    blog_layout("Tags", content, &site)
+    blog_layout("Tags", content, &site, route)
 }
 
 pub fn render_archive_page(
     work_dir: &ThreadSafeWorkDir,
     archive: &HashMap<(i32, u8), usize>,
+    route: &str,
 ) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
@@ -246,5 +247,5 @@ pub fn render_archive_page(
         }
     };
 
-    blog_layout("Archive", content, &site)
+    blog_layout("Archive", content, &site, route)
 }

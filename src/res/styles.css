@@ -23,6 +23,40 @@ body {
   }
 }
 
+.page-header {
+  font-size: 16px;
+  background-color: #111;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+
+  nav {
+    padding: 10px 20px;
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+  }
+
+  nav.sub-nav {
+    font-size: 14px;
+    border-bottom: 1px solid #333;
+  }
+}
+
+.page-header > nav > span > a {
+  color: white;
+  text-decoration: none;
+}
+
+.page-header > nav > .root-link {
+  font-weight: bold;
+  margin-right: 20px;
+}
+
+.page-header > nav > .active > a {
+  font-weight: bold;
+}
+
 .item_thumb_grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));

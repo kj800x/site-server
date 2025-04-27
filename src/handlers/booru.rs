@@ -9,16 +9,11 @@ use crate::thread_safe_work_dir::ThreadSafeWorkDir;
 use super::{ListingPageConfig, ListingPageMode};
 
 // Helper functions for rendering booru components
-fn booru_layout(title: &str, content: Markup, site: &str) -> Markup {
+fn booru_layout(title: &str, content: Markup, site: &str, route: &str) -> Markup {
     html! {
         (super::Css("/res/styles.css"))
+        (super::header(site, "booru", route))
         .booru_layout {
-            header.booru_header {
-                nav.booru_nav {
-                    a href=(format!("/{}/booru/latest", site)) { "Latest" }
-                    a href=(format!("/{}/booru/random", site)) { "Random" }
-                }
-            }
             main.booru_main {
                 @if !title.is_empty() {
                     h1.page_title { (title) }
@@ -55,6 +50,7 @@ pub fn render_listing_page(
     work_dir: &ThreadSafeWorkDir,
     config: ListingPageConfig,
     items: &[CrawlItem],
+    route: &str,
 ) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
@@ -75,13 +71,14 @@ pub fn render_listing_page(
         ( super::paginator(config.page, config.total, config.per_page, &config.paginator_prefix(&site, "booru")) )
     };
 
-    booru_layout(&title, content, &site)
+    booru_layout(&title, content, &site, route)
 }
 
 pub fn render_detail_page(
     work_dir: &ThreadSafeWorkDir,
     item: &CrawlItem,
     file: &FileCrawlType,
+    route: &str,
 ) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
@@ -145,10 +142,14 @@ pub fn render_detail_page(
         }
     };
 
-    booru_layout(&item.title, content, &site)
+    booru_layout(&item.title, content, &site, route)
 }
 
-pub fn render_tags_page(work_dir: &ThreadSafeWorkDir, tags: &HashMap<String, usize>) -> Markup {
+pub fn render_tags_page(
+    work_dir: &ThreadSafeWorkDir,
+    tags: &HashMap<String, usize>,
+    route: &str,
+) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
 
@@ -168,12 +169,13 @@ pub fn render_tags_page(work_dir: &ThreadSafeWorkDir, tags: &HashMap<String, usi
         }
     };
 
-    booru_layout("Tags", content, &site)
+    booru_layout("Tags", content, &site, route)
 }
 
 pub fn render_archive_page(
     work_dir: &ThreadSafeWorkDir,
     archive: &HashMap<(i32, u8), usize>,
+    route: &str,
 ) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
@@ -194,5 +196,5 @@ pub fn render_archive_page(
         }
     };
 
-    booru_layout("Archive", content, &site)
+    booru_layout("Archive", content, &site, route)
 }
