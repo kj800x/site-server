@@ -147,7 +147,7 @@ pub fn render_detail_page(
                             @if *downloaded {
                                 @let coerced_filename = filename.split('.').next().unwrap_or("").to_string() + ".mp4";
                                 figure.post_figure {
-                                    video.post_video controls {
+                                    video.post_video controls autoplay {
                                         source src=(format!("/{}/assets/{}", site, coerced_filename)) {}
                                     }
                                 }
