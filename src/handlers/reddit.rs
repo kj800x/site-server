@@ -1,28 +1,12 @@
-use chrono::Utc;
 use maud::{html, Markup};
 use std::collections::HashMap;
 use urlencoding::encode;
 
-use super::{ListingPageConfig, ListingPageMode};
-use crate::handlers::PaginatorPrefix;
+use super::{ArchiveYear, ListingPageConfig, ListingPageMode, ListingPageOrdering};
+use crate::collections::GetKey;
+use crate::handlers::{format_year_month, timeago, PaginatorPrefix};
 use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
 use crate::thread_safe_work_dir::ThreadSafeWorkDir;
-
-// Helper functions for rendering reddit components
-fn timeago(timestamp: u64) -> String {
-    let now = Utc::now().timestamp_millis() as u64;
-    let diff = now - timestamp;
-    let hours = diff / (1000 * 60 * 60);
-    let days = hours / 24;
-
-    if days > 0 {
-        format!("{} days ago", days)
-    } else if hours > 0 {
-        format!("{} hours ago", hours)
-    } else {
-        "just now".to_string()
-    }
-}
 
 fn reddit_layout(title: &str, content: Markup, site: &str, route: &str) -> Markup {
     html! {
@@ -38,9 +22,6 @@ fn reddit_layout(title: &str, content: Markup, site: &str, route: &str) -> Marku
                 (super::header(site, "r", route))
                 .reddit_layout {
                     main.reddit_main {
-                        @if !title.is_empty() {
-                            h1.page_title { (title) }
-                        }
                         (content)
                     }
                 }
@@ -50,8 +31,6 @@ fn reddit_layout(title: &str, content: Markup, site: &str, route: &str) -> Marku
 }
 
 fn reddit_post_card(item: &CrawlItem, site: &str) -> Markup {
-    let timeago = timeago(item.source_published as u64);
-
     html! {
         article.reddit_post_card {
             header.post_header {
@@ -59,33 +38,33 @@ fn reddit_post_card(item: &CrawlItem, site: &str) -> Markup {
                     @if let Some(author) = item.meta.get("author") {
                         (author.as_str().unwrap_or("unknown user"))
                     } @else {
-                        "unknown user"
+                        "unknown_user"
                     }
                 }
-                span.post_time { (timeago) }
+                span.post_time { (timeago(item.source_published as u64)) }
             }
             .post_content {
                 h2.post_title {
                     a href=(format!("/{}/r/item/{}", site, encode(&item.key))) { (item.title) }
+                }
+                .post_tags {
+                    @for tag in &item.tags {
+                        @match tag {
+                            CrawlTag::Simple(x) =>
+                                a.post_tag href=(format!("/{}/r/tag/{}", site, encode(x))) { (x) },
+                            CrawlTag::Detailed { value, .. } =>
+                                a.post_tag href=(format!("/{}/r/tag/{}", site, encode(value))) { (value) },
+                        }
+                    }
                 }
                 @if let Some(thumb) = item.thumbnail_path() {
                     .post_preview {
                         img src=(format!("/{}/assets/{}", site, thumb)) alt=(item.title) {}
                     }
                 }
-                .post_tags {
-                    @for tag in &item.tags {
-                        @match tag {
-                            CrawlTag::Simple(x) =>
-                                span.post_tag { (x) },
-                            CrawlTag::Detailed { value, .. } =>
-                                span.post_tag { (value) },
-                        }
-                    }
-                }
             }
         }
-        hr.post_separator {}
+        div.post_separator {}
     }
 }
 
@@ -100,24 +79,58 @@ pub fn render_listing_page(
     let site = workdir.config.slug.clone();
 
     let title = match &config.mode {
-        ListingPageMode::All => String::new(),
+        ListingPageMode::All => match config.ordering {
+            ListingPageOrdering::NewestFirst => "Newest Posts".to_string(),
+            ListingPageOrdering::OldestFirst => "Oldest Posts".to_string(),
+            ListingPageOrdering::Random => "Random Posts".to_string(),
+        },
         ListingPageMode::ByTag { tag } => format!("Posts tagged \"{}\"", tag),
         ListingPageMode::ByMonth { year, month } => {
-            format!("Posts from {}/{}", year, month)
+            format!(
+                "Posts from {}",
+                format_year_month(*year as i32, *month as u8)
+            )
         }
     };
 
     let content = html! {
-        .reddit_posts {
-            @for item in items {
-                (reddit_post_card(item, &site))
+        .reddit_posts_container {
+            @if !title.is_empty() && !matches!(config.mode, ListingPageMode::All) {
+                h1.page_title { (title) }
             }
+            .reddit_posts {
+                @for item in items {
+                    (reddit_post_card(item, &site))
+                }
+            }
+            // FIXME: Don't include a paginator if the sort order is random
+            (super::paginator(config.page, config.total, config.per_page, &config.paginator_prefix(&site, "r")))
         }
-        // FIXME: Don't include a paginator if the sort order is random
-        (super::paginator(config.page, config.total, config.per_page, &config.paginator_prefix(&site, "r")))
+        .reddit_right_bar {}
     };
 
     reddit_layout(&title, content, &site, route)
+}
+
+pub fn post_file_paginator(item: &CrawlItem, site: &str, current_file: &FileCrawlType) -> Markup {
+    let current_file_index = item.files.get_index_of(current_file.get_key()).unwrap();
+    let prev_file = item.files.get_index(current_file_index.wrapping_sub(1));
+    let next_file = item.files.get_index(current_file_index.wrapping_add(1));
+
+    html! {
+        div.post_file_paginator {
+            @if let Some(prev_file) = prev_file {
+                a.prev href=(format!("/{}/r/item/{}/{}", site, encode(&item.key), encode(&prev_file.0))) {
+                    "<"
+                }
+            }
+            @if let Some(next_file) = next_file {
+                a.next href=(format!("/{}/r/item/{}/{}", site, encode(&item.key), encode(&next_file.0))) {
+                    ">"
+                }
+            }
+        }
+    }
 }
 
 pub fn render_detail_page(
@@ -128,7 +141,6 @@ pub fn render_detail_page(
 ) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
-    let timeago = timeago(item.source_published as u64);
 
     let content = html! {
         article.reddit_post_detail {
@@ -140,7 +152,7 @@ pub fn render_detail_page(
                         "unknown user"
                     }
                 }
-                span.post_time { (timeago) }
+                span.post_time { (timeago(item.source_published as u64)) }
             }
             h1.post_title { (item.title) }
             .post_content {
@@ -150,6 +162,7 @@ pub fn render_detail_page(
                             @if *downloaded {
                                 figure.post_figure {
                                     img.post_image src=(format!("/{}/assets/{}", site, filename)) alt=(item.title) {}
+                                    (post_file_paginator(item, &site, &file))
                                 }
                             }
                         }
@@ -160,6 +173,7 @@ pub fn render_detail_page(
                                     video.post_video controls autoplay {
                                         source src=(format!("/{}/assets/{}", site, coerced_filename)) {}
                                     }
+                                    (post_file_paginator(item, &site, &file))
                                 }
                             }
                         }
@@ -175,11 +189,16 @@ pub fn render_detail_page(
                     @for tag in &item.tags {
                         @match tag {
                             CrawlTag::Simple(x) =>
-                                span.post_tag { (x) },
+                                a.post_tag href=(format!("/{}/r/tag/{}", site, encode(x))) { (x) },
                             CrawlTag::Detailed { value, .. } =>
-                                span.post_tag { (value) },
+                                a.post_tag href=(format!("/{}/r/tag/{}", site, encode(value))) { (value) },
                         }
                     }
+                }
+
+                p.post_source {
+                    "Source: "
+                    a href=(item.url) { (item.url) }
                 }
 
                 @if !item.meta.is_object() || !item.meta.as_object().unwrap().is_empty() {
@@ -194,21 +213,17 @@ pub fn render_detail_page(
                         }
                     }
                 }
-
-                p.post_source {
-                    "Source: "
-                    a href=(item.url) { (item.url) }
-                }
             }
         }
     };
 
-    reddit_layout("", content, &site, route)
+    reddit_layout(&item.title, content, &site, route)
 }
 
 pub fn render_tags_page(
     work_dir: &ThreadSafeWorkDir,
     tags: &HashMap<String, usize>,
+    tag_order: &Vec<String>,
     route: &str,
 ) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
@@ -218,11 +233,11 @@ pub fn render_tags_page(
         .tag_list_page {
             h2 { "Tags" }
             ul.tag_list {
-                @for (tag, count) in tags {
+                @for tag in tag_order {
                     li.tag_item {
                         a href=(format!("/{}/r/tag/{}", site, encode(tag))) {
                             span.tag_name { (tag) }
-                            span.tag_count { " (" (count) ")" }
+                            span.tag_count { " (" (tags.get(tag).unwrap_or(&0)) ")" }
                         }
                     }
                 }
@@ -235,21 +250,27 @@ pub fn render_tags_page(
 
 pub fn render_archive_page(
     work_dir: &ThreadSafeWorkDir,
-    archive: &HashMap<(i32, u8), usize>,
+    archive: &Vec<ArchiveYear>,
     route: &str,
 ) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
 
+    let archive_months = archive
+        .iter()
+        .map(|year| year.months.iter())
+        .flatten()
+        .collect::<Vec<_>>();
+
     let content = html! {
         .archive_page {
             h2 { "Archive" }
             ul.archive_list {
-                @for ((year, month), count) in archive {
+                @for month in archive_months {
                     li.archive_item {
-                        a href=(format!("/{}/r/archive/{}/{:02}", site, year, month)) {
-                            span.archive_date { (format!("{}/{:02}", year, month)) }
-                            span.archive_count { " (" (count) ")" }
+                        a href=(format!("/{}/r/archive/{}/{:02}", site, month.year, month.month)) {
+                            span.archive_date { (format_year_month(month.year, month.month)) }
+                            span.archive_count { " (" (month.count) ")" }
                         }
                     }
                 }

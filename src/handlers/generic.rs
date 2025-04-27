@@ -2,7 +2,9 @@ use std::collections::HashMap;
 
 use actix_web::{get, web, HttpResponse, Responder};
 use chrono::{DateTime, Datelike, TimeZone, Utc};
+use itertools::Itertools;
 use rand::seq::SliceRandom;
+use serde::Deserialize;
 
 use crate::{
     handlers::WorkDirPrefix,
@@ -192,12 +194,32 @@ pub async fn generic_oldest_page_handler(
     renderer.render_listing_page(&workdir, config, &items, &format!("/oldest/{page}"))
 }
 
+#[derive(Deserialize)]
+pub struct TagParam {
+    sort: Option<String>,
+}
+
+pub enum TagSort {
+    Count,
+    Alphabetical,
+}
+
 #[get("/tags")]
 pub async fn generic_tags_index_handler(
     renderer: web::Data<SiteRendererType>,
     workdir: web::Data<ThreadSafeWorkDir>,
+    query: web::Query<TagParam>,
 ) -> impl Responder {
     let renderer = renderer.into_inner();
+
+    let sort = match &query.sort {
+        Some(sort) => match sort.as_str() {
+            "count" => TagSort::Count,
+            "alpha" => TagSort::Alphabetical,
+            _ => TagSort::Count,
+        },
+        None => TagSort::Count,
+    };
 
     let tags = {
         let workdir = get_workdir(&workdir).unwrap();
@@ -215,9 +237,21 @@ pub async fn generic_tags_index_handler(
         tags
     };
 
-    renderer.render_tags_page(&workdir, &tags, &format!("/tags"))
-}
+    let tag_order: Vec<String> = {
+        let mut tag_names = tags.keys().cloned().collect::<Vec<_>>();
+        match sort {
+            TagSort::Count => tag_names.sort_by(|a, b| {
+                let a_count = tags.get(a).unwrap_or(&0);
+                let b_count = tags.get(b).unwrap_or(&0);
+                b_count.cmp(a_count).then(a.cmp(b))
+            }),
+            TagSort::Alphabetical => tag_names.sort_by_key(|tag| tag.clone()),
+        }
+        tag_names
+    };
 
+    renderer.render_tags_page(&workdir, &tags, &tag_order, &format!("/tags"))
+}
 #[get("/tag/{tag}")]
 pub async fn generic_tag_handler(
     renderer: web::Data<SiteRendererType>,
@@ -270,6 +304,19 @@ pub async fn generic_tag_page_handler(
     )
 }
 
+#[derive(Clone)]
+pub struct ArchiveYearMonth {
+    pub year: i32,
+    pub month: u8,
+    pub count: usize,
+}
+
+#[derive(Clone)]
+pub struct ArchiveYear {
+    pub year: i32,
+    pub months: Vec<ArchiveYearMonth>,
+}
+
 #[get("/archive")]
 pub async fn generic_archive_index_handler(
     renderer: web::Data<SiteRendererType>,
@@ -292,7 +339,28 @@ pub async fn generic_archive_index_handler(
         archive
     };
 
-    renderer.render_archive_page(&workdir, &archive, &format!("/archive"))
+    let mut archive_year_months: Vec<ArchiveYearMonth> = archive
+        .iter()
+        .map(|((year, month), count)| ArchiveYearMonth {
+            year: *year,
+            month: *month,
+            count: *count,
+        })
+        .collect();
+    archive_year_months.sort_by_key(|item| (-item.year, -(item.month as i32)));
+
+    let mut archive_years: Vec<ArchiveYear> = archive_year_months
+        .iter()
+        .group_by(|item| item.year)
+        .into_iter()
+        .map(|(year, items)| ArchiveYear {
+            year: year,
+            months: items.cloned().collect(),
+        })
+        .collect();
+    archive_years.sort_by_key(|item| -item.year);
+
+    renderer.render_archive_page(&workdir, &archive_years, &format!("/archive"))
 }
 
 #[get("/archive/{year}/{month}")]

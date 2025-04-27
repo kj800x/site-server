@@ -1,9 +1,9 @@
 use chrono::{Month, TimeZone, Utc};
 use maud::{html, Markup};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use urlencoding::encode;
 
-use super::{ListingPageConfig, ListingPageMode};
+use super::{ArchiveYear, ListingPageConfig, ListingPageMode};
 use crate::handlers::PaginatorPrefix;
 use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
 use crate::thread_safe_work_dir::ThreadSafeWorkDir;
@@ -196,6 +196,7 @@ pub fn render_detail_page(
 pub fn render_tags_page(
     work_dir: &ThreadSafeWorkDir,
     tags: &HashMap<String, usize>,
+    tag_order: &Vec<String>,
     route: &str,
 ) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
@@ -205,11 +206,11 @@ pub fn render_tags_page(
         .tag_list_page {
             h2 { "Tags" }
             ul.tag_list {
-                @for (tag, count) in tags {
+                @for tag in tag_order {
                     li.tag_item {
                         a href=(format!("/{}/blog/tag/{}", site, encode(tag))) {
                             span.tag_name { (tag) }
-                            span.tag_count { " (" (count) ")" }
+                            span.tag_count { " (" (tags.get(tag).unwrap_or(&0)) ")" }
                         }
                     }
                 }
@@ -222,31 +223,25 @@ pub fn render_tags_page(
 
 pub fn render_archive_page(
     work_dir: &ThreadSafeWorkDir,
-    archive: &HashMap<(i32, u8), usize>,
+    archive: &Vec<ArchiveYear>,
     route: &str,
 ) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
 
-    // Group by year first
-    let mut years: BTreeMap<i32, Vec<(u8, usize)>> = BTreeMap::new();
-    for ((year, month), count) in archive {
-        years.entry(*year).or_default().push((*month, *count));
-    }
-
     let content = html! {
         .blog_archive_page {
             h2 { "Archive" }
             ul.blog_archive_list.full_archive_list {
-                @for (year, months) in years.iter().rev() {
+                @for year in archive.iter() {
                     li.archive_year {
-                        h3.year_name { (year) }
+                        h3.year_name { (year.year) }
                         ul.month_list {
-                            @for (month, count) in months.iter().rev() {
+                            @for month in year.months.iter().rev() {
                                 li.archive_month {
-                                    a href=(format!("/{}/blog/archive/{}/{:02}", site, year, month)) {
-                                        span.month_name { (Month::try_from(*month).unwrap().name()) }
-                                        span.month_count { "(" (count) ")" }
+                                    a href=(format!("/{}/blog/archive/{}/{:02}", site, year.year, month.month)) {
+                                        span.month_name { (Month::try_from(month.month).unwrap().name()) }
+                                        span.month_count { "(" (month.count) ")" }
                                     }
                                 }
                             }

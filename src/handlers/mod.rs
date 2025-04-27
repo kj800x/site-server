@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use chrono::Utc;
 use maud::{html, Markup};
 
 mod blog;
@@ -30,6 +31,74 @@ impl maud::Render for Js {
     fn render(&self) -> Markup {
         html! {
             script type="text/javascript" src=(self.0) {}
+        }
+    }
+}
+
+pub fn format_year_month(year: i32, month: u8) -> String {
+    format!(
+        "{} {}",
+        match month {
+            1 => "January",
+            2 => "February",
+            3 => "March",
+            4 => "April",
+            5 => "May",
+            6 => "June",
+            7 => "July",
+            8 => "August",
+            9 => "September",
+            10 => "October",
+            11 => "November",
+            12 => "December",
+            _ => "Unknown",
+        },
+        year
+    )
+}
+
+pub fn timeago(timestamp: u64) -> Markup {
+    let dt =
+        chrono::DateTime::from_timestamp_millis(timestamp as i64).unwrap_or_else(|| Utc::now());
+
+    let now = Utc::now().timestamp_millis() as u64;
+    let diff = now - timestamp;
+    let hours = diff / (1000 * 60 * 60);
+    let days = hours / 24;
+    let months = days / 30;
+    let years = days / 365;
+
+    let timeago_text = if years > 0 {
+        if years == 1 {
+            "1 year ago".to_string()
+        } else {
+            format!("{} years ago", years)
+        }
+    } else if months > 0 {
+        if months == 1 {
+            "1 month ago".to_string()
+        } else {
+            format!("{} months ago", months)
+        }
+    } else if days > 0 {
+        if days == 1 {
+            "1 day ago".to_string()
+        } else {
+            format!("{} days ago", days)
+        }
+    } else if hours > 0 {
+        if hours == 1 {
+            "1 hour ago".to_string()
+        } else {
+            format!("{} hours ago", hours)
+        }
+    } else {
+        "just now".to_string()
+    };
+
+    html! {
+        time datetime=(dt.to_rfc3339()) title=(dt.to_rfc3339()) {
+            (timeago_text)
         }
     }
 }
@@ -191,12 +260,13 @@ pub trait SiteRenderer {
         &self,
         work_dir: &ThreadSafeWorkDir,
         tags: &HashMap<String, usize>,
+        tag_order: &Vec<String>,
         route: &str,
     ) -> Markup;
     fn render_archive_page(
         &self,
         work_dir: &ThreadSafeWorkDir,
-        archive: &HashMap<(i32, u8), usize>,
+        archive: &Vec<ArchiveYear>,
         route: &str,
     ) -> Markup;
     fn get_prefix(&self) -> &str;
@@ -235,19 +305,20 @@ impl SiteRenderer for SiteRendererType {
         &self,
         work_dir: &ThreadSafeWorkDir,
         tags: &HashMap<String, usize>,
+        tag_order: &Vec<String>,
         route: &str,
     ) -> Markup {
         match self {
-            SiteRendererType::Blog => blog::render_tags_page(work_dir, tags, route),
-            SiteRendererType::Booru => booru::render_tags_page(work_dir, tags, route),
-            SiteRendererType::Reddit => reddit::render_tags_page(work_dir, tags, route),
+            SiteRendererType::Blog => blog::render_tags_page(work_dir, tags, tag_order, route),
+            SiteRendererType::Booru => booru::render_tags_page(work_dir, tags, tag_order, route),
+            SiteRendererType::Reddit => reddit::render_tags_page(work_dir, tags, tag_order, route),
         }
     }
 
     fn render_archive_page(
         &self,
         work_dir: &ThreadSafeWorkDir,
-        archive: &HashMap<(i32, u8), usize>,
+        archive: &Vec<ArchiveYear>,
         route: &str,
     ) -> Markup {
         match self {

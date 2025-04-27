@@ -6,7 +6,7 @@ use crate::handlers::PaginatorPrefix;
 use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
 use crate::thread_safe_work_dir::ThreadSafeWorkDir;
 
-use super::{ListingPageConfig, ListingPageMode};
+use super::{ArchiveYear, ListingPageConfig, ListingPageMode};
 
 // Helper functions for rendering booru components
 fn booru_layout(title: &str, content: Markup, site: &str, route: &str) -> Markup {
@@ -158,6 +158,7 @@ pub fn render_detail_page(
 pub fn render_tags_page(
     work_dir: &ThreadSafeWorkDir,
     tags: &HashMap<String, usize>,
+    tag_order: &Vec<String>,
     route: &str,
 ) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
@@ -167,11 +168,11 @@ pub fn render_tags_page(
         .tag_list_page {
             h2 { "Tags" }
             ul.tag_list {
-                @for (tag, count) in tags {
+                @for tag in tag_order {
                     li.tag_item {
                         a href=(format!("/{}/booru/tag/{}", site, encode(tag))) {
                             span.tag_name { (tag) }
-                            span.tag_count { " (" (count) ")" }
+                            span.tag_count { " (" (tags.get(tag).unwrap_or(&0)) ")" }
                         }
                     }
                 }
@@ -184,21 +185,27 @@ pub fn render_tags_page(
 
 pub fn render_archive_page(
     work_dir: &ThreadSafeWorkDir,
-    archive: &HashMap<(i32, u8), usize>,
+    archive: &Vec<ArchiveYear>,
     route: &str,
 ) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
 
+    let archive_months = archive
+        .iter()
+        .map(|year| year.months.iter())
+        .flatten()
+        .collect::<Vec<_>>();
+
     let content = html! {
         .archive_page {
             h2 { "Archive" }
             ul.archive_list {
-                @for ((year, month), count) in archive {
+                @for month in archive_months {
                     li.archive_item {
-                        a href=(format!("/{}/booru/archive/{}/{:02}", site, year, month)) {
-                            span.archive_date { (format!("{}/{:02}", year, month)) }
-                            span.archive_count { " (" (count) ")" }
+                        a href=(format!("/{}/booru/archive/{}/{:02}", site, month.year, month.month)) {
+                            span.archive_date { (format!("{}/{:02}", month.year, month.month)) }
+                            span.archive_count { " (" (month.count) ")" }
                         }
                     }
                 }

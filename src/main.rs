@@ -96,7 +96,7 @@ async fn root_index_handler(
             @for site in site.iter() {
                 @let site = site.work_dir.read().unwrap();
                 li {
-                    a.site_link href=(format!("/{}/booru/latest", site.config.slug)) { (site.config.label) }
+                    a.site_link href=(format!("/{}/r/latest", site.config.slug)) { (site.config.label) }
                     " ("
                     a.site_link href=(format!("/{}/info", site.config.slug)) { "info" }
                     ")"

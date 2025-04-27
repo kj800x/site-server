@@ -23,6 +23,7 @@ indexmap = { version = "2.2.5", features = ["serde"] }
 thiserror = "1.0"
 maud = { version = "*", features = ["actix-web"] }
 urlencoding = { version = "2.1.3" }
+itertools = "0.12.1"
 # metrics
 actix-web-opentelemetry = { version = "0.16.0", features = [
   "metrics",
