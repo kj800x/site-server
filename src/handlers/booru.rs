@@ -11,14 +11,24 @@ use super::{ListingPageConfig, ListingPageMode};
 // Helper functions for rendering booru components
 fn booru_layout(title: &str, content: Markup, site: &str, route: &str) -> Markup {
     html! {
-        (super::Css("/res/styles.css"))
-        (super::header(site, "booru", route))
-        .booru_layout {
-            main.booru_main {
-                @if !title.is_empty() {
-                    h1.page_title { (title) }
+        (maud::DOCTYPE)
+        html {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1" {}
+                (super::Css("/res/styles.css"))
+                title { (title) }
+            }
+            body {
+                (super::header(site, "booru", route))
+                .booru_layout {
+                    main.booru_main {
+                        @if !title.is_empty() {
+                            h1.page_title { (title) }
+                        }
+                        (content)
+                    }
                 }
-                (content)
             }
         }
     }

@@ -52,15 +52,25 @@ fn blog_post_card(item: &CrawlItem, site: &str) -> Markup {
 
 fn blog_layout(title: &str, content: Markup, site: &str, route: &str) -> Markup {
     html! {
-        (super::Css("/res/styles.css"))
-        (super::header(site, "blog", route))
-        .blogger_layout {
-            .blogger_content {
-                main.blog_main {
-                    @if !title.is_empty() {
-                        h2.page_title { (title) }
+        (maud::DOCTYPE)
+        html {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1" {}
+                (super::Css("/res/styles.css"))
+                title { (title) }
+            }
+            body {
+                (super::header(site, "blog", route))
+                .blogger_layout {
+                    .blogger_content {
+                        main.blog_main {
+                            @if !title.is_empty() {
+                                h2.page_title { (title) }
+                            }
+                            (content)
+                        }
                     }
-                    (content)
                 }
             }
         }

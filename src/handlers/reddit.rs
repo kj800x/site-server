@@ -26,14 +26,24 @@ fn timeago(timestamp: u64) -> String {
 
 fn reddit_layout(title: &str, content: Markup, site: &str, route: &str) -> Markup {
     html! {
-        (super::Css("/res/styles.css"))
-        (super::header(site, "r", route))
-        .reddit_layout {
-            main.reddit_main {
-                @if !title.is_empty() {
-                    h1.page_title { (title) }
+        (maud::DOCTYPE)
+        html {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1" {}
+                (super::Css("/res/styles.css"))
+                title { (title) }
+            }
+            body {
+                (super::header(site, "r", route))
+                .reddit_layout {
+                    main.reddit_main {
+                        @if !title.is_empty() {
+                            h1.page_title { (title) }
+                        }
+                        (content)
+                    }
                 }
-                (content)
             }
         }
     }
