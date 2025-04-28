@@ -113,9 +113,11 @@ pub fn render_listing_page(
 }
 
 pub fn post_file_paginator(item: &CrawlItem, site: &str, current_file: &FileCrawlType) -> Markup {
-    let current_file_index = item.files.get_index_of(current_file.get_key()).unwrap();
-    let prev_file = item.files.get_index(current_file_index.wrapping_sub(1));
-    let next_file = item.files.get_index(current_file_index.wrapping_add(1));
+    let flat_files = item.flat_files();
+
+    let current_file_index = flat_files.get_index_of(current_file.get_key()).unwrap();
+    let prev_file = flat_files.get_index(current_file_index.wrapping_sub(1));
+    let next_file = flat_files.get_index(current_file_index.wrapping_add(1));
 
     html! {
         div.post_file_paginator {

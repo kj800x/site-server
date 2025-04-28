@@ -412,7 +412,7 @@ pub async fn generic_detail_redirect(
         item
     };
 
-    let file_id = { item.files.keys().next().unwrap().to_string() };
+    let file_id = { item.flat_files().keys().next().unwrap().to_string() };
 
     HttpResponse::SeeOther()
         .append_header((
@@ -442,7 +442,7 @@ pub async fn generic_detail_handler(
         item
     };
 
-    let file = { item.files.get(&file_id).unwrap().clone() };
+    let file = { item.flat_files().get(&file_id).unwrap().clone() };
 
     renderer.render_detail_page(&workdir, &item, &file, &format!("/item/{id}/{file_id}"))
 }
