@@ -46,6 +46,18 @@ pub enum FileCrawlType {
     Text { key: String, content: String },
 }
 
+impl FileCrawlType {
+    pub fn is_downloaded(&self) -> bool {
+        match self {
+            FileCrawlType::Image { downloaded, .. } | FileCrawlType::Video { downloaded, .. } => {
+                *downloaded
+            }
+            FileCrawlType::Intermediate { downloaded, .. } => *downloaded,
+            FileCrawlType::Text { .. } => true,
+        }
+    }
+}
+
 impl GetKey for FileCrawlType {
     fn get_key(&self) -> &str {
         match self {

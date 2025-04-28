@@ -27,7 +27,7 @@ use site_server::{
     serve_static_file, thread_safe_work_dir, workdir,
 };
 
-use handlers::{date_time_element, get_workdir, ThreadSafeWorkDir, WorkDirPrefix};
+use handlers::{date_time_element, ThreadSafeWorkDir, WorkDirPrefix};
 use thread_safe_work_dir::ThreadSafeWorkDir as ThreadSafeWorkDirImpl;
 use workdir::WorkDir;
 
@@ -46,61 +46,54 @@ enum Commands {
     Serve { work_dirs: Vec<String> },
 }
 
-#[get("/info")]
-async fn info_handler(
-    site: web::Data<WorkDirPrefix>,
-    workdir: web::Data<ThreadSafeWorkDir>,
-    start_time: web::Data<StartTime>,
-) -> Result<impl Responder, actix_web::Error> {
-    use maud::html;
-
-    let workdir = get_workdir(&workdir)?;
-    let latest_update = workdir.crawled.items.values().map(|x| x.last_seen).max();
-    let first_update = workdir.crawled.items.values().map(|x| x.first_seen).min();
-
-    return Ok(html! {
-        (handlers::Css("/res/styles.css"))
-        h1 { "Hello, world!" }
-        p {
-            "The current site is: "
-            code { (site.0) }
-        }
-        p {
-            "The first update was on "
-            (date_time_element(first_update))
-        }
-        p {
-            "The latest update was on "
-            (date_time_element(latest_update))
-        }
-        p {
-            "The site server was started on "
-            (date_time_element(Some(start_time.0.try_into().unwrap())))
-        }
-        p {
-            "This site has " (workdir.crawled.iter().count()) " items"
-        }
-    });
-}
-
 #[get("/")]
 async fn root_index_handler(
     site: web::Data<Vec<ThreadSafeWorkDir>>,
+    start_time: web::Data<StartTime>,
 ) -> Result<impl Responder, actix_web::Error> {
     use maud::html;
 
     return Ok(html! {
         (handlers::Css("/res/styles.css"))
         h1.page_title { "Loaded sites" }
-        ul.site_list {
-            @for site in site.iter() {
-                @let site = site.work_dir.read().unwrap();
-                li {
-                    a.site_link href=(format!("/{}/r/latest", site.config.slug)) { (site.config.label) }
-                    " ("
-                    a.site_link href=(format!("/{}/info", site.config.slug)) { "info" }
-                    ")"
+        table.site_table {
+            thead {
+                tr {
+                    th { "Site" }
+                    th { "First Update" }
+                    th { "Latest Update" }
+                    th { "Last Reloaded" }
+                    th { "Total Items" }
+                    th { "Links" }
                 }
+            }
+            tbody {
+                @for site in site.iter() {
+                    @let site = site.work_dir.read().unwrap();
+                    @let latest_update = site.crawled.items.values().map(|x| x.last_seen).max();
+                    @let first_update = site.crawled.items.values().map(|x| x.first_seen).min();
+                    @let loaded_at = site.loaded_at;
+                    tr {
+                        td { (site.config.label) }
+                        td { (handlers::date_time_element(first_update)) }
+                        td { (handlers::date_time_element(latest_update)) }
+                        td { (handlers::date_time_element(Some(loaded_at as u64))) }
+                        td { (site.crawled.iter().count()) }
+                        td {
+                            a.site_link href=(format!("/{}/booru/latest", site.config.slug)) { "Booru" }
+                            "|"
+                            a.site_link href=(format!("/{}/blog/latest", site.config.slug)) { "Blog" }
+                            "|"
+                            a.site_link href=(format!("/{}/r/latest", site.config.slug)) { "Reddit" }
+                        }
+                    }
+                }
+            }
+        }
+        .root_handler_info {
+            p {
+                "The site server was started on "
+                (date_time_element(Some(start_time.0.try_into().unwrap())))
             }
         }
     });
@@ -204,7 +197,6 @@ async fn run() -> errors::Result<()> {
                         web::scope(&slug)
                             .app_data(web::Data::new(workdir.clone()))
                             .app_data(web::Data::new(WorkDirPrefix(slug.clone())))
-                            .service(info_handler)
                             .service(
                                 Files::new(
                                     "/assets",

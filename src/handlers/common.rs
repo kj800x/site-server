@@ -57,7 +57,7 @@ pub fn date_time_element(timestamp: Option<u64>) -> maud::Markup {
     if let Some(ts) = timestamp {
         let time = Utc.timestamp_millis_opt(ts as i64).unwrap();
         html! {
-            time datetime=(time.to_rfc3339()) {
+            time datetime=(time.to_rfc3339()) title=(time.to_rfc3339()) {
                 (time.format("%B %d, %Y"))
             }
         }

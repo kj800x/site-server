@@ -1,3 +1,4 @@
+use indexmap::IndexMap;
 use maud::{html, Markup};
 use std::collections::HashMap;
 use urlencoding::encode;
@@ -113,7 +114,11 @@ pub fn render_listing_page(
 }
 
 pub fn post_file_paginator(item: &CrawlItem, site: &str, current_file: &FileCrawlType) -> Markup {
-    let flat_files = item.flat_files();
+    let flat_files = item
+        .flat_files()
+        .into_iter()
+        .filter(|(_, file)| file.is_downloaded())
+        .collect::<IndexMap<String, FileCrawlType>>();
 
     let current_file_index = flat_files.get_index_of(current_file.get_key()).unwrap();
     let prev_file = flat_files.get_index(current_file_index.wrapping_sub(1));
@@ -149,9 +154,9 @@ pub fn render_detail_page(
             header.post_header {
                 span.post_author {
                     @if let Some(author) = item.meta.get("author") {
-                        (author.as_str().unwrap_or("unknown user"))
+                        (author.as_str().unwrap_or("unknown_user"))
                     } @else {
-                        "unknown user"
+                        "unknown_user"
                     }
                 }
                 span.post_time { (timeago(item.source_published as u64)) }

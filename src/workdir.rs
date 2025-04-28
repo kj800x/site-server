@@ -74,6 +74,7 @@ pub struct WorkDir {
     pub config: Config,
     pub crawled: SiteItems,
     pub last_seen_modified: u64,
+    pub loaded_at: u128,
 }
 
 #[allow(dead_code)]
@@ -118,11 +119,17 @@ impl WorkDir {
             crawled.remove_items_without_files();
         }
 
+        let loaded_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+
         Ok(WorkDir {
             path: path.into(),
             crawled,
             config,
             last_seen_modified,
+            loaded_at,
         })
     }
 }

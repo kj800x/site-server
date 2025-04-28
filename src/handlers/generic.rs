@@ -2,13 +2,15 @@ use std::collections::HashMap;
 
 use actix_web::{get, web, HttpResponse, Responder};
 use chrono::{DateTime, Datelike, TimeZone, Utc};
+use indexmap::IndexMap;
 use itertools::Itertools;
 use rand::seq::SliceRandom;
 use serde::Deserialize;
+use urlencoding::encode;
 
 use crate::{
     handlers::WorkDirPrefix,
-    site::{CrawlItem, CrawlTag},
+    site::{CrawlItem, CrawlTag, FileCrawlType},
 };
 
 use super::{
@@ -412,7 +414,16 @@ pub async fn generic_detail_redirect(
         item
     };
 
-    let file_id = { item.flat_files().keys().next().unwrap().to_string() };
+    let file_id = {
+        item.flat_files()
+            .into_iter()
+            .filter(|(_, file)| file.is_downloaded())
+            .collect::<IndexMap<String, FileCrawlType>>()
+            .keys()
+            .next()
+            .unwrap()
+            .to_string()
+    };
 
     HttpResponse::SeeOther()
         .append_header((
@@ -421,8 +432,8 @@ pub async fn generic_detail_redirect(
                 "/{}/{}/item/{}/{}",
                 workdir_prefix.0,
                 renderer.get_prefix(),
-                id,
-                file_id
+                encode(&id),
+                encode(&file_id)
             ),
         ))
         .finish()
@@ -444,5 +455,10 @@ pub async fn generic_detail_handler(
 
     let file = { item.flat_files().get(&file_id).unwrap().clone() };
 
-    renderer.render_detail_page(&workdir, &item, &file, &format!("/item/{id}/{file_id}"))
+    renderer.render_detail_page(
+        &workdir,
+        &item,
+        &file,
+        &format!("/item/{}/{}", encode(&id), encode(&file_id)),
+    )
 }

@@ -36,7 +36,7 @@ fn booru_layout(title: &str, content: Markup, site: &str, route: &str) -> Markup
 
 fn item_thumbnail(item: &CrawlItem, site: &str) -> Markup {
     html! {
-        a.item_thumb_container href=(format!("/{}/booru/item/{}/{}", site, encode(&item.key), encode(item.flat_files().keys().into_iter().next().unwrap_or(&"".to_string())))) {
+        a.item_thumb_container href=(format!("/{}/booru/item/{}", site, encode(&item.key))) {
             .item_thumb_img {
                 @if let Some(thumb) = item.thumbnail_path() {
                     img src=(format!("/{}/assets/{}", site, thumb)) {}
