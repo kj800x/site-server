@@ -2,7 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const next = [...document.getElementsByTagName("a")].filter((a) => a.hasAttribute("data-is-next"))[0];
   const prev = [...document.getElementsByTagName("a")].filter((a) => a.hasAttribute("data-is-prev"))[0];
 
-  document.addEventListener('keydown', function(e) {
+  document.addEventListener('keyup', function(e) {
     if (next && e.code == 'ArrowRight') {
       window.location.href = next.href;
     }

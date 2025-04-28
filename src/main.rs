@@ -22,7 +22,8 @@ use site_server::{
         generic_detail_redirect, generic_index_handler, generic_index_root_handler,
         generic_latest_handler, generic_latest_page_handler, generic_oldest_handler,
         generic_oldest_page_handler, generic_random_handler, generic_tag_handler,
-        generic_tag_page_handler, generic_tags_index_handler, SiteRenderer,
+        generic_tag_page_handler, generic_tags_index_handler, media_viewer_fragment_handler,
+        SiteRenderer,
     },
     serve_static_file, thread_safe_work_dir, workdir,
 };
@@ -54,46 +55,54 @@ async fn root_index_handler(
     use maud::html;
 
     return Ok(html! {
-        (handlers::Css("/res/styles.css"))
-        h1.page_title { "Loaded sites" }
-        table.site_table {
-            thead {
-                tr {
-                    th { "Site" }
-                    th { "First Update" }
-                    th { "Latest Update" }
-                    th { "Last Reloaded" }
-                    th { "Total Items" }
-                    th { "Links" }
-                }
+        html {
+            head {
+                (handlers::Css("/res/styles.css"))
+                (handlers::scripts())
+                title { "Site Server"}
             }
-            tbody {
-                @for site in site.iter() {
-                    @let site = site.work_dir.read().unwrap();
-                    @let latest_update = site.crawled.items.values().map(|x| x.last_seen).max();
-                    @let first_update = site.crawled.items.values().map(|x| x.first_seen).min();
-                    @let loaded_at = site.loaded_at;
-                    tr {
-                        td { (site.config.label) }
-                        td { (handlers::date_time_element(first_update)) }
-                        td { (handlers::date_time_element(latest_update)) }
-                        td { (handlers::date_time_element(Some(loaded_at as u64))) }
-                        td { (site.crawled.iter().count()) }
-                        td {
-                            a.site_link href=(format!("/{}/booru/latest", site.config.slug)) { "Booru" }
-                            "|"
-                            a.site_link href=(format!("/{}/blog/latest", site.config.slug)) { "Blog" }
-                            "|"
-                            a.site_link href=(format!("/{}/r/latest", site.config.slug)) { "Reddit" }
+            body {
+                h1.page_title { "Loaded sites" }
+                table.site_table {
+                    thead {
+                        tr {
+                            th { "Site" }
+                            th { "First Update" }
+                            th { "Latest Update" }
+                            th { "Last Reloaded" }
+                            th { "Total Items" }
+                            th { "Links" }
+                        }
+                    }
+                    tbody {
+                        @for site in site.iter() {
+                            @let site = site.work_dir.read().unwrap();
+                            @let latest_update = site.crawled.items.values().map(|x| x.last_seen).max();
+                            @let first_update = site.crawled.items.values().map(|x| x.first_seen).min();
+                            @let loaded_at = site.loaded_at;
+                            tr {
+                                td { (site.config.label) }
+                                td { (handlers::date_time_element(first_update)) }
+                                td { (handlers::date_time_element(latest_update)) }
+                                td { (handlers::date_time_element(Some(loaded_at as u64))) }
+                                td { (site.crawled.iter().count()) }
+                                td {
+                                    a.site_link href=(format!("/{}/booru/latest", site.config.slug)) { "Booru" }
+                                    "|"
+                                    a.site_link href=(format!("/{}/blog/latest", site.config.slug)) { "Blog" }
+                                    "|"
+                                    a.site_link href=(format!("/{}/r/latest", site.config.slug)) { "Reddit" }
+                                }
+                            }
                         }
                     }
                 }
-            }
-        }
-        .root_handler_info {
-            p {
-                "The site server was started on "
-                (date_time_element(Some(start_time.0.try_into().unwrap())))
+                .root_handler_info {
+                    p {
+                        "The site server was started on "
+                        (date_time_element(Some(start_time.0.try_into().unwrap())))
+                    }
+                }
             }
         }
     });
@@ -158,6 +167,9 @@ async fn run() -> errors::Result<()> {
                     .wrap(middleware::Logger::default())
                     .service(serve_static_file!("styles.css"))
                     .service(serve_static_file!("detail_page.js"))
+                    .service(serve_static_file!("idiomorph.min.js"))
+                    .service(serve_static_file!("idiomorph-ext.min.js"))
+                    .service(serve_static_file!("htmx.min.js"))
                     .service(root_index_handler);
 
                 for workdir in work_dirs_vec.iter() {
@@ -189,7 +201,8 @@ async fn run() -> errors::Result<()> {
                                 .service(generic_archive_page_handler)
                                 .service(generic_archive_index_handler)
                                 .service(generic_detail_handler)
-                                .service(generic_detail_redirect),
+                                .service(generic_detail_redirect)
+                                .service(media_viewer_fragment_handler),
                         );
                     }
 

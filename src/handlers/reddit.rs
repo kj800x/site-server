@@ -1,9 +1,10 @@
+use actix_web::{get, web, Responder};
 use indexmap::IndexMap;
 use maud::{html, Markup};
 use std::collections::HashMap;
 use urlencoding::encode;
 
-use super::{ArchiveYear, ListingPageConfig, ListingPageMode, ListingPageOrdering};
+use super::{get_workdir, ArchiveYear, ListingPageConfig, ListingPageMode, ListingPageOrdering};
 use crate::collections::GetKey;
 use crate::handlers::{format_year_month, timeago, PaginatorPrefix};
 use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
@@ -17,9 +18,10 @@ fn reddit_layout(title: &str, content: Markup, site: &str, route: &str) -> Marku
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1" {}
                 (super::Css("/res/styles.css"))
+                (super::scripts())
                 title { (title) }
             }
-            body {
+            body hx-ext="morph" {
                 (super::header(site, "r", route))
                 .reddit_layout {
                     main.reddit_main {
@@ -127,17 +129,82 @@ pub fn post_file_paginator(item: &CrawlItem, site: &str, current_file: &FileCraw
     html! {
         div.post_file_paginator {
             @if let Some(prev_file) = prev_file {
-                a.prev href=(format!("/{}/r/item/{}/{}", site, encode(&item.key), encode(&prev_file.0))) {
+                a.prev
+                    href=(format!("/{}/r/item/{}/{}", site, encode(&item.key), encode(&prev_file.0)))
+                    data-is-prev
+                    // hx-get=(format!("/{}/r/item-fragment/{}/{}", site, encode(&item.key), encode(&prev_file.0)))
+                    // hx-trigger="click, keyup[key=ArrowLeft] from:body once"
+                    // hx-target="closest .media_viewer"
+                    // hx-swap="morph"
+                {
                     "<"
                 }
             }
             @if let Some(next_file) = next_file {
-                a.next href=(format!("/{}/r/item/{}/{}", site, encode(&item.key), encode(&next_file.0))) {
+                a.next
+                    href=(format!("/{}/r/item/{}/{}", site, encode(&item.key), encode(&next_file.0)))
+                    data-is-next
+                    // hx-get=(format!("/{}/r/item-fragment/{}/{}", site, encode(&item.key), encode(&next_file.0)))
+                    // hx-trigger="click, keyup[key=ArrowRight] from:body once"
+                    // hx-target="closest .media_viewer"
+                    // hx-swap="morph"
+                {
                     ">"
                 }
             }
         }
     }
+}
+
+pub fn render_media_viewer(site: &str, item: &CrawlItem, file: &FileCrawlType) -> Markup {
+    html!(
+        .media_viewer {
+            @match file {
+                FileCrawlType::Image { filename, downloaded, .. } => {
+                    @if *downloaded {
+                        figure.post_figure {
+                            img.post_image src=(format!("/{}/assets/{}", site, filename)) alt=(item.title) {}
+                            (post_file_paginator(item, &site, &file))
+                        }
+                    }
+                }
+                FileCrawlType::Video { filename, downloaded, .. } => {
+                    @if *downloaded {
+                        @let coerced_filename = filename.split('.').next().unwrap_or("").to_string() + ".mp4";
+                        figure.post_figure {
+                            video.post_video controls autoplay {
+                                source src=(format!("/{}/assets/{}", site, coerced_filename)) {}
+                            }
+                            (post_file_paginator(item, &site, &file))
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    )
+}
+
+#[get("/item-fragment/{id}/{file_id}")]
+pub async fn media_viewer_fragment_handler(
+    workdir: web::Data<ThreadSafeWorkDir>,
+    path: web::Path<(String, String)>,
+) -> impl Responder {
+    let (id, file_id) = path.into_inner();
+    let site = {
+        let workdir = get_workdir(&workdir).unwrap();
+        let site = workdir.config.slug.clone();
+        site
+    };
+    let item = {
+        let workdir = get_workdir(&workdir).unwrap();
+        let item = workdir.crawled.get(&id).unwrap().clone();
+        item
+    };
+
+    let file = { item.flat_files().get(&file_id).unwrap().clone() };
+
+    render_media_viewer(&site, &item, &file)
 }
 
 pub fn render_detail_page(
@@ -163,30 +230,7 @@ pub fn render_detail_page(
             }
             h1.post_title { (item.title) }
             .post_content {
-                .media_viewer {
-                    @match file {
-                        FileCrawlType::Image { filename, downloaded, .. } => {
-                            @if *downloaded {
-                                figure.post_figure {
-                                    img.post_image src=(format!("/{}/assets/{}", site, filename)) alt=(item.title) {}
-                                    (post_file_paginator(item, &site, &file))
-                                }
-                            }
-                        }
-                        FileCrawlType::Video { filename, downloaded, .. } => {
-                            @if *downloaded {
-                                @let coerced_filename = filename.split('.').next().unwrap_or("").to_string() + ".mp4";
-                                figure.post_figure {
-                                    video.post_video controls autoplay {
-                                        source src=(format!("/{}/assets/{}", site, coerced_filename)) {}
-                                    }
-                                    (post_file_paginator(item, &site, &file))
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                }
+                (render_media_viewer(&site, &item, &file))
 
                 .post_description {
                     p { (item.description) }

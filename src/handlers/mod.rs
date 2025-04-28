@@ -11,6 +11,7 @@ mod reddit;
 
 pub use common::*;
 pub use generic::*;
+pub use reddit::media_viewer_fragment_handler;
 
 use crate::site::{CrawlItem, FileCrawlType};
 
@@ -100,6 +101,16 @@ pub fn timeago(timestamp: u64) -> Markup {
         time datetime=(dt.to_rfc3339()) title=(dt.to_rfc3339()) {
             (timeago_text)
         }
+    }
+}
+
+/// Common scripts for all pages
+pub fn scripts() -> Markup {
+    html! {
+        script src="/res/htmx.min.js" {}
+        script src="/res/detail_page.js" {}
+        script src="/res/idiomorph.min.js" {}
+        script src="/res/idiomorph-ext.min.js" {}
     }
 }
 
