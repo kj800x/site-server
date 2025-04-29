@@ -5,7 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.addEventListener('keyup', function(e) {
     if (next && e.code == 'ArrowRight') {
-      if (next.getAttribute('data-replace-history')) {
+      if (next.getAttribute('data-replace-history') != null) {
         e.preventDefault();
         window.location.replace(next.href);
       } else {
@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
     if (prev && e.code == 'ArrowLeft') {
-      if (prev.getAttribute('data-replace-history')) {
+      if (prev.getAttribute('data-replace-history') != null) {
         e.preventDefault();
         window.location.replace(prev.href);
       } else {
@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
     if (quit && e.code == 'Escape') {
-      if (quit.getAttribute('data-replace-history')) {
+      if (quit.getAttribute('data-replace-history') != null) {
         e.preventDefault();
         window.location.replace(quit.href);
       } else {
