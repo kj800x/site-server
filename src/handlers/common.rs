@@ -25,7 +25,7 @@ pub async fn validator(
         credentials
     } else {
         return Err((
-            actix_web::error::ErrorBadRequest("no basic auth header"),
+            AuthenticationError::from(Config::default().realm("Site Server")).into(),
             req,
         ));
     };
@@ -35,14 +35,10 @@ pub async fn validator(
     if credentials.user_id() == expected_username && password == expected_password {
         Ok(req)
     } else {
-        // Return 401 Unauthorized with proper WWW-Authenticate header
-        let config = req
-            .app_data::<Config>()
-            .cloned()
-            .unwrap_or_default()
-            .realm("Site Server");
-
-        Err((AuthenticationError::from(config).into(), req))
+        return Err((
+            AuthenticationError::from(Config::default().realm("Site Server")).into(),
+            req,
+        ));
     }
 }
 
