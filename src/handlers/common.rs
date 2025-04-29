@@ -5,8 +5,13 @@ use actix_web_httpauth::extractors::AuthenticationError;
 // Authentication validator function
 pub async fn validator(
     req: actix_web::dev::ServiceRequest,
-    credentials: BasicAuth,
+    credentials: Option<BasicAuth>,
 ) -> Result<actix_web::dev::ServiceRequest, (actix_web::Error, actix_web::dev::ServiceRequest)> {
+    // Allow metrics and healthz requests to pass through
+    if req.path() == "/api/metrics" || req.path() == "/healthz" {
+        return Ok(req);
+    }
+
     // Get auth credentials from environment
     let expected_username = std::env::var("BASIC_AUTH_USERNAME").unwrap_or_default();
     let expected_password = std::env::var("BASIC_AUTH_PASSWORD").unwrap_or_default();
@@ -15,6 +20,15 @@ pub async fn validator(
     if expected_username.is_empty() || expected_password.is_empty() {
         return Ok(req);
     }
+
+    let credentials = if let Some(credentials) = credentials {
+        credentials
+    } else {
+        return Err((
+            actix_web::error::ErrorBadRequest("no basic auth header"),
+            req,
+        ));
+    };
 
     // Check if credentials match
     let password = credentials.password().unwrap_or_default();

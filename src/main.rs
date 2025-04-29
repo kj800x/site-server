@@ -47,6 +47,23 @@ enum Commands {
     Serve { work_dirs: Vec<String> },
 }
 
+#[get("/healthz")]
+async fn healthz(
+    site: web::Data<Vec<ThreadSafeWorkDir>>,
+    start_time: web::Data<StartTime>,
+) -> impl Responder {
+    let sites = site
+        .iter()
+        .map(|site| site.work_dir.read().unwrap().config.label.clone())
+        .collect::<Vec<String>>();
+
+    HttpResponse::Ok().body(format!(
+        "OK. {} sites. Started {}.",
+        sites.len(),
+        start_time.0
+    ))
+}
+
 #[get("/")]
 async fn root_index_handler(
     site: web::Data<Vec<ThreadSafeWorkDir>>,
@@ -144,7 +161,7 @@ async fn run() -> errors::Result<()> {
             log::info!("Starting HTTP server at http://{}:8080", listen_address);
 
             HttpServer::new(move || {
-                let auth = HttpAuthentication::basic(handlers::validator);
+                let auth = HttpAuthentication::with_fn(handlers::validator);
 
                 let mut app = App::new()
                     .wrap(auth) // Guard all routes with HTTP Basic Auth
@@ -164,12 +181,17 @@ async fn run() -> errors::Result<()> {
                     )
                     .app_data(web::Data::new(work_dirs_vec.clone()))
                     .app_data(web::Data::new(StartTime(Utc::now().timestamp_millis())))
-                    .wrap(middleware::Logger::default())
+                    .wrap(
+                        middleware::Logger::default()
+                            .exclude("/healthz")
+                            .exclude("/api/metrics"),
+                    )
                     .service(serve_static_file!("styles.css"))
                     .service(serve_static_file!("detail_page.js"))
                     .service(serve_static_file!("idiomorph.min.js"))
                     .service(serve_static_file!("idiomorph-ext.min.js"))
                     .service(serve_static_file!("htmx.min.js"))
+                    .service(healthz)
                     .service(root_index_handler);
 
                 for workdir in work_dirs_vec.iter() {
