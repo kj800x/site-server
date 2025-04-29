@@ -157,6 +157,7 @@ pub fn post_file_paginator(
                 a.prev
                     href=(format!("/{}/r/{}/{}/{}", site, route_base, encode(&item.key), encode(&prev_file.0)))
                     data-is-prev
+                    data-replace-history
                     // hx-get=(format!("/{}/r/item-fragment/{}/{}", site, encode(&item.key), encode(&prev_file.0)))
                     // hx-trigger="click, keyup[key=ArrowLeft] from:body once"
                     // hx-target="closest .media_viewer"
@@ -169,6 +170,7 @@ pub fn post_file_paginator(
                 a.next
                     href=(format!("/{}/r/{}/{}/{}", site, route_base, encode(&item.key), encode(&next_file.0)))
                     data-is-next
+                    data-replace-history
                     // hx-get=(format!("/{}/r/item-fragment/{}/{}", site, encode(&item.key), encode(&next_file.0)))
                     // hx-trigger="click, keyup[key=ArrowRight] from:body once"
                     // hx-target="closest .media_viewer"
@@ -189,7 +191,7 @@ pub fn render_media_viewer(site: &str, item: &CrawlItem, file: &FileCrawlType) -
                     @if *downloaded {
                         figure.post_figure {
                             img.post_image src=(format!("/{}/assets/{}", site, filename)) alt=(item.title) {}
-                            a.fullscreen_click_target href=(format!("/{}/r/item-full/{}/{}", site, encode(&item.key), encode(&file.get_key()))) {}
+                            a.fullscreen_click_target data-replace-history href=(format!("/{}/r/item-full/{}/{}", site, encode(&item.key), encode(&file.get_key()))) {}
                             (post_file_paginator(item, &site, "item", &file))
                         }
                     }
@@ -201,7 +203,7 @@ pub fn render_media_viewer(site: &str, item: &CrawlItem, file: &FileCrawlType) -
                             video.post_video controls autoplay {
                                 source src=(format!("/{}/assets/{}", site, coerced_filename)) {}
                             }
-                            a.fullscreen_link href=(format!("/{}/r/item-full/{}/{}", site, encode(&item.key), encode(&file.get_key()))) {
+                            a.fullscreen_link data-replace-history href=(format!("/{}/r/item-full/{}/{}", site, encode(&item.key), encode(&file.get_key()))) {
                                 "⏶"
                             }
                             (post_file_paginator(item, &site, "item", &file))
@@ -264,6 +266,7 @@ pub fn render_full_media_viewer(site: &str, item: &CrawlItem, file: &FileCrawlTy
             a.quit
                 href=(format!("/{}/r/item/{}/{}", site, encode(&item.key), encode(&file.get_key())))
                 data-is-quit
+                data-replace-history
             {
                 "🗙"
             }

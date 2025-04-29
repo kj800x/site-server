@@ -5,13 +5,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.addEventListener('keyup', function(e) {
     if (next && e.code == 'ArrowRight') {
-      window.location.href = next.href;
+      if (next.getAttribute('data-replace-history')) {
+        e.preventDefault();
+        window.location.replace(next.href);
+      } else {
+        window.location.href = next.href;
+      }
     }
     if (prev && e.code == 'ArrowLeft') {
-      window.location.href = prev.href;
+      if (prev.getAttribute('data-replace-history')) {
+        e.preventDefault();
+        window.location.replace(prev.href);
+      } else {
+        window.location.href = prev.href;
+      }
     }
     if (quit && e.code == 'Escape') {
-      window.location.href = quit.href;
+      if (quit.getAttribute('data-replace-history')) {
+        e.preventDefault();
+        window.location.replace(quit.href);
+      } else {
+        window.location.href = quit.href;
+      }
     }
   });
+});
+
+document.addEventListener('click', (e) => {
+  const link = e.target.closest('a[data-replace-history]');
+  if (link) {
+    e.preventDefault();
+    window.location.replace(link.href);
+  }
 });
