@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
   const next = [...document.getElementsByTagName("a")].filter((a) => a.hasAttribute("data-is-next"))[0];
   const prev = [...document.getElementsByTagName("a")].filter((a) => a.hasAttribute("data-is-prev"))[0];
+  const quit = [...document.getElementsByTagName("a")].filter((a) => a.hasAttribute("data-is-quit"))[0];
 
   document.addEventListener('keyup', function(e) {
     if (next && e.code == 'ArrowRight') {
@@ -8,6 +9,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (prev && e.code == 'ArrowLeft') {
       window.location.href = prev.href;
+    }
+    if (quit && e.code == 'Escape') {
+      window.location.href = quit.href;
     }
   });
 });

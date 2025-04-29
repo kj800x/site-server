@@ -462,3 +462,27 @@ pub async fn generic_detail_handler(
         &format!("/item/{}/{}", encode(&id), encode(&file_id)),
     )
 }
+
+#[get("/item-full/{id}/{file_id}")]
+pub async fn generic_detail_full_handler(
+    renderer: web::Data<SiteRendererType>,
+    workdir: web::Data<ThreadSafeWorkDir>,
+    path: web::Path<(String, String)>,
+) -> impl Responder {
+    let (id, file_id) = path.into_inner();
+    let renderer = renderer.into_inner();
+    let item = {
+        let workdir = get_workdir(&workdir).unwrap();
+        let item = workdir.crawled.get(&id).unwrap().clone();
+        item
+    };
+
+    let file = { item.flat_files().get(&file_id).unwrap().clone() };
+
+    renderer.render_detail_full_page(
+        &workdir,
+        &item,
+        &file,
+        &format!("/item-full/{}/{}", encode(&id), encode(&file_id)),
+    )
+}

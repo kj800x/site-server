@@ -280,6 +280,13 @@ pub trait SiteRenderer {
         archive: &Vec<ArchiveYear>,
         route: &str,
     ) -> Markup;
+    fn render_detail_full_page(
+        &self,
+        work_dir: &ThreadSafeWorkDir,
+        item: &CrawlItem,
+        file: &FileCrawlType,
+        route: &str,
+    ) -> Markup;
     fn get_prefix(&self) -> &str;
 }
 
@@ -336,6 +343,22 @@ impl SiteRenderer for SiteRendererType {
             SiteRendererType::Blog => blog::render_archive_page(work_dir, archive, route),
             SiteRendererType::Booru => booru::render_archive_page(work_dir, archive, route),
             SiteRendererType::Reddit => reddit::render_archive_page(work_dir, archive, route),
+        }
+    }
+
+    fn render_detail_full_page(
+        &self,
+        work_dir: &ThreadSafeWorkDir,
+        item: &CrawlItem,
+        file: &FileCrawlType,
+        route: &str,
+    ) -> Markup {
+        match self {
+            SiteRendererType::Blog => blog::render_detail_page(work_dir, item, file, route),
+            SiteRendererType::Booru => booru::render_detail_page(work_dir, item, file, route),
+            SiteRendererType::Reddit => {
+                reddit::render_detail_full_page(work_dir, item, file, route)
+            }
         }
     }
 

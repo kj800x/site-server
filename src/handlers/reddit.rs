@@ -33,6 +33,26 @@ fn reddit_layout(title: &str, content: Markup, site: &str, route: &str) -> Marku
     }
 }
 
+fn reddit_layout_full(title: &str, content: Markup, __site: &str, __route: &str) -> Markup {
+    html! {
+        (maud::DOCTYPE)
+        html {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1" {}
+                (super::Css("/res/styles.css"))
+                (super::scripts())
+                title { (title) }
+            }
+            body hx-ext="morph" {
+                main.reddit_layout_full {
+                    (content)
+                }
+            }
+        }
+    }
+}
+
 fn reddit_post_card(item: &CrawlItem, site: &str) -> Markup {
     html! {
         article.reddit_post_card {
@@ -115,7 +135,12 @@ pub fn render_listing_page(
     reddit_layout(&title, content, &site, route)
 }
 
-pub fn post_file_paginator(item: &CrawlItem, site: &str, current_file: &FileCrawlType) -> Markup {
+pub fn post_file_paginator(
+    item: &CrawlItem,
+    site: &str,
+    route_base: &str,
+    current_file: &FileCrawlType,
+) -> Markup {
     let flat_files = item
         .flat_files()
         .into_iter()
@@ -130,26 +155,26 @@ pub fn post_file_paginator(item: &CrawlItem, site: &str, current_file: &FileCraw
         div.post_file_paginator {
             @if let Some(prev_file) = prev_file {
                 a.prev
-                    href=(format!("/{}/r/item/{}/{}", site, encode(&item.key), encode(&prev_file.0)))
+                    href=(format!("/{}/r/{}/{}/{}", site, route_base, encode(&item.key), encode(&prev_file.0)))
                     data-is-prev
                     // hx-get=(format!("/{}/r/item-fragment/{}/{}", site, encode(&item.key), encode(&prev_file.0)))
                     // hx-trigger="click, keyup[key=ArrowLeft] from:body once"
                     // hx-target="closest .media_viewer"
                     // hx-swap="morph"
                 {
-                    "<"
+                    "‹"
                 }
             }
             @if let Some(next_file) = next_file {
                 a.next
-                    href=(format!("/{}/r/item/{}/{}", site, encode(&item.key), encode(&next_file.0)))
+                    href=(format!("/{}/r/{}/{}/{}", site, route_base, encode(&item.key), encode(&next_file.0)))
                     data-is-next
                     // hx-get=(format!("/{}/r/item-fragment/{}/{}", site, encode(&item.key), encode(&next_file.0)))
                     // hx-trigger="click, keyup[key=ArrowRight] from:body once"
                     // hx-target="closest .media_viewer"
                     // hx-swap="morph"
                 {
-                    ">"
+                    "›"
                 }
             }
         }
@@ -164,7 +189,8 @@ pub fn render_media_viewer(site: &str, item: &CrawlItem, file: &FileCrawlType) -
                     @if *downloaded {
                         figure.post_figure {
                             img.post_image src=(format!("/{}/assets/{}", site, filename)) alt=(item.title) {}
-                            (post_file_paginator(item, &site, &file))
+                            a.fullscreen_click_target href=(format!("/{}/r/item-full/{}/{}", site, encode(&item.key), encode(&file.get_key()))) {}
+                            (post_file_paginator(item, &site, "item", &file))
                         }
                     }
                 }
@@ -175,7 +201,10 @@ pub fn render_media_viewer(site: &str, item: &CrawlItem, file: &FileCrawlType) -
                             video.post_video controls autoplay {
                                 source src=(format!("/{}/assets/{}", site, coerced_filename)) {}
                             }
-                            (post_file_paginator(item, &site, &file))
+                            a.fullscreen_link href=(format!("/{}/r/item-full/{}/{}", site, encode(&item.key), encode(&file.get_key()))) {
+                                "⏶"
+                            }
+                            (post_file_paginator(item, &site, "item", &file))
                         }
                     }
                 }
@@ -205,6 +234,41 @@ pub async fn media_viewer_fragment_handler(
     let file = { item.flat_files().get(&file_id).unwrap().clone() };
 
     render_media_viewer(&site, &item, &file)
+}
+
+pub fn render_full_media_viewer(site: &str, item: &CrawlItem, file: &FileCrawlType) -> Markup {
+    html!(
+        .media_viewer {
+            @match file {
+                FileCrawlType::Image { filename, downloaded, .. } => {
+                    @if *downloaded {
+                        figure.post_figure {
+                            img.post_image src=(format!("/{}/assets/{}", site, filename)) alt=(item.title) {}
+                            (post_file_paginator(item, &site, "item-full", &file))
+                        }
+                    }
+                }
+                FileCrawlType::Video { filename, downloaded, .. } => {
+                    @if *downloaded {
+                        @let coerced_filename = filename.split('.').next().unwrap_or("").to_string() + ".mp4";
+                        figure.post_figure {
+                            video.post_video controls autoplay {
+                                source src=(format!("/{}/assets/{}", site, coerced_filename)) {}
+                            }
+                            (post_file_paginator(item, &site, "item-full", &file))
+                        }
+                    }
+                }
+                _ => {}
+            }
+            a.quit
+                href=(format!("/{}/r/item/{}/{}", site, encode(&item.key), encode(&file.get_key())))
+                data-is-quit
+            {
+                "🗙"
+            }
+        }
+    )
 }
 
 pub fn render_detail_page(
@@ -269,6 +333,24 @@ pub fn render_detail_page(
     };
 
     reddit_layout(&item.title, content, &site, route)
+}
+
+pub fn render_detail_full_page(
+    work_dir: &ThreadSafeWorkDir,
+    item: &CrawlItem,
+    file: &FileCrawlType,
+    route: &str,
+) -> Markup {
+    let workdir = work_dir.work_dir.read().unwrap();
+    let site = workdir.config.slug.clone();
+
+    let content = html! {
+        article.reddit_post_detail_full {
+            (render_full_media_viewer(&site, &item, &file))
+        }
+    };
+
+    reddit_layout_full(&item.title, content, &site, route)
 }
 
 pub fn render_tags_page(
