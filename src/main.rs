@@ -234,6 +234,8 @@ async fn run() -> errors::Result<()> {
                             .app_data(web::Data::new(workdir.clone()))
                             .app_data(web::Data::new(WorkDirPrefix(slug.clone())))
                             .service(
+                                // FIXME: Serving these files seems to exhaust the worker pool
+                                // and the server stops responding to requests. This aint good.
                                 Files::new(
                                     "/assets",
                                     workdir.work_dir.read().unwrap().path.clone(),
