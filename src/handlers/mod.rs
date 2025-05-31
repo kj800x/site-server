@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use chrono::Utc;
-use maud::{html, Markup};
+use maud::{html, Markup, PreEscaped};
 
 mod blog;
 mod booru;
@@ -35,6 +35,13 @@ impl maud::Render for Js {
         }
     }
 }
+
+pub const PRERENDER_RULES: &str = r#"{
+    "prerender": [
+        { "where": { "selector_matches": "a[data-is-next]" }, "eagerness": "immediate" },
+        { "where": { "selector_matches": "a[data-is-prev]" }, "eagerness": "eager" }
+    ]
+}"#;
 
 pub fn format_year_month(year: i32, month: u8) -> String {
     format!(
@@ -111,6 +118,9 @@ pub fn scripts() -> Markup {
         script src="/res/detail_page.js" {}
         script src="/res/idiomorph.min.js" {}
         script src="/res/idiomorph-ext.min.js" {}
+        script type="speculationrules" {
+            (PreEscaped(PRERENDER_RULES))
+        }
     }
 }
 
