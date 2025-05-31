@@ -71,6 +71,20 @@ async fn root_index_handler(
 ) -> Result<impl Responder, actix_web::Error> {
     use maud::html;
 
+    // Create a vector of sites with their latest update times for sorting
+    let mut sites_with_updates: Vec<_> = site
+        .iter()
+        .map(|site| {
+            let site = site.work_dir.read().unwrap();
+            let latest_update = site.crawled.items.values().map(|x| x.last_seen).max();
+            (site, latest_update)
+        })
+        .collect();
+
+    // Sort by latest update time in descending order (most recent first)
+    sites_with_updates
+        .sort_by_key(|(_, latest_update)| std::cmp::Reverse(latest_update.unwrap_or(0)));
+
     return Ok(html! {
         html {
             head {
@@ -92,8 +106,7 @@ async fn root_index_handler(
                         }
                     }
                     tbody {
-                        @for site in site.iter() {
-                            @let site = site.work_dir.read().unwrap();
+                        @for (site, _) in sites_with_updates {
                             @let latest_update = site.crawled.items.values().map(|x| x.last_seen).max();
                             @let first_update = site.crawled.items.values().map(|x| x.first_seen).min();
                             @let loaded_at = site.loaded_at;
