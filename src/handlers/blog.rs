@@ -20,10 +20,10 @@ fn blog_post_card(item: &CrawlItem, site: &str) -> Markup {
                 h3.post_title {
                     a href=(format!("/{}/blog/item/{}", site, encode(&item.key))) { (item.title) }
                 }
-                .post_meta {
-                    time datetime=(time.to_rfc3339()) {
-                        (time.format("%B %d, %Y"))
-                    }
+            }
+            .post_meta {
+                time datetime=(time.to_rfc3339()) {
+                    (time.format("%B %d, %Y"))
                 }
             }
             @if let Some(thumb) = item.thumbnail_path() {
