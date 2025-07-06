@@ -149,6 +149,7 @@ pub struct CrawlItem {
     pub url: String,
     pub description: FormattedText,
     pub meta: Value,
+    #[serde(default = "default_i64_zero", deserialize_with = "null_to_zero")]
     pub source_published: i64,
     pub first_seen: u64,
     pub last_seen: u64,

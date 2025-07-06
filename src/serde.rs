@@ -68,3 +68,14 @@ where
 
     Ok(mapped)
 }
+
+pub fn default_i64_zero() -> i64 {
+    0
+}
+
+pub fn null_to_zero<'de, D>(deserializer: D) -> Result<i64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Option::<i64>::deserialize(deserializer).map(|x| x.unwrap_or(0))
+}
