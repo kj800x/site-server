@@ -131,10 +131,11 @@ impl Render for FormattedText {
     fn render(&self) -> Markup {
         match self {
             FormattedText::Plaintext { value } => {
-                html!( pre { (value) } )
+                html!( pre.pre-wrap { (value) } )
             }
-            FormattedText::Markdown { .. } => {
-                todo!();
+            FormattedText::Markdown { value } => {
+                // todo!();
+                html!( pre.pre-wrap { (value) } )
             }
             FormattedText::Html { value } => PreEscaped(value.to_owned()),
         }

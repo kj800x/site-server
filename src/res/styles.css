@@ -1124,3 +1124,8 @@ dd {
     white-space: nowrap;
   }
 }
+
+pre.pre-wrap {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
