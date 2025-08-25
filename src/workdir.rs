@@ -46,6 +46,13 @@ impl SiteItems {
             })
         });
     }
+
+    pub fn remove_duplicate_tags(&mut self) {
+        self.items.retain(|_k, v| {
+            v.tags.dedup();
+            true
+        });
+    }
 }
 
 impl From<IndexMap<String, CrawlItem>> for SiteItems {
@@ -116,6 +123,7 @@ impl WorkDir {
         };
 
         crawled.sort();
+        crawled.remove_duplicate_tags();
         if std::env::var("ALLOW_NO_FILES").is_err() {
             crawled.remove_items_without_files();
         }
