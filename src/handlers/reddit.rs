@@ -53,15 +53,17 @@ fn reddit_layout_full(title: &str, content: Markup, __site: &str, __route: &str)
     }
 }
 
-fn reddit_post_card(item: &CrawlItem, site: &str) -> Markup {
+fn reddit_post_card(item: &CrawlItem, site: &str, forced_author: &Option<String>) -> Markup {
     html! {
         article.reddit_post_card {
             header.post_header {
                 span.post_author {
-                    @if let Some(author) = item.meta.get("author") {
-                        (author.as_str().unwrap_or("unknown user"))
+                    @if let Some(author) = item.meta.get("author").iter().flat_map(|x| x.as_str()).next() {
+                        (author)
+                    } @else if let Some(forced_author) = forced_author.as_ref() {
+                        (forced_author)
                     } @else {
-                        "unknown_user"
+                        "unknown"
                     }
                 }
                 span.post_time { (timeago(item.source_published as u64)) }
@@ -100,6 +102,7 @@ pub fn render_listing_page(
 ) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
+    let forced_author = workdir.config.forced_author.clone();
 
     let title = match &config.mode {
         ListingPageMode::All => match config.ordering {
@@ -123,7 +126,7 @@ pub fn render_listing_page(
             }
             .reddit_posts {
                 @for item in items {
-                    (reddit_post_card(item, &site))
+                    (reddit_post_card(item, &site, &forced_author))
                 }
             }
             // FIXME: Don't include a paginator if the sort order is random
@@ -282,15 +285,18 @@ pub fn render_detail_page(
 ) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
+    let forced_author = workdir.config.forced_author.clone();
 
     let content = html! {
         article.reddit_post_detail {
             header.post_header {
                 span.post_author {
-                    @if let Some(author) = item.meta.get("author") {
-                        (author.as_str().unwrap_or("unknown_user"))
+                    @if let Some(author) = item.meta.get("author").iter().flat_map(|x| x.as_str()).next() {
+                        (author)
+                    } @else if let Some(forced_author) = forced_author.as_ref() {
+                        (forced_author)
                     } @else {
-                        "unknown_user"
+                        "unknown"
                     }
                 }
                 span.post_time { (timeago(item.source_published as u64)) }

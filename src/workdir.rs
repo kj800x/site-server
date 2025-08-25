@@ -18,6 +18,7 @@ pub struct Config {
     pub site: String,
     pub slug: String,
     pub label: String,
+    pub forced_author: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
