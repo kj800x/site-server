@@ -1,7 +1,7 @@
 use std::{
     fs::File,
     ops::{Deref, DerefMut},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use crate::{errors::*, site::FileCrawlType};
@@ -80,8 +80,8 @@ pub struct WorkDir {
 
 #[allow(dead_code)]
 impl WorkDir {
-    pub fn new(path_str: String) -> Result<Self> {
-        let path = Path::new(&path_str);
+    pub fn new<P: Into<PathBuf>>(p: P) -> Result<Self> {
+        let path = p.into();
         let config_path = path.join("config.json");
         let config_file = File::open(config_path).context("Unable to open config.json")?;
         let config: Config =
