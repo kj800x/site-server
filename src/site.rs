@@ -83,12 +83,12 @@ impl Display for FileCrawlType {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(untagged)]
 #[serde(rename_all = "camelCase")]
 pub enum CrawlTag {
+    Detailed { group: String, value: String },
     Simple(String),
-    Detailed { value: String, group: String },
 }
 
 impl CrawlTag {

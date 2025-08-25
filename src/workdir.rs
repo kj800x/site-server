@@ -48,9 +48,9 @@ impl SiteItems {
     }
 
     pub fn remove_duplicate_tags(&mut self) {
-        self.items.retain(|_k, v| {
+        self.items.iter_mut().for_each(|(_, v)| {
+            v.tags.sort();
             v.tags.dedup();
-            true
         });
     }
 }
