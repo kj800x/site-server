@@ -2,6 +2,7 @@ use actix_web::{get, web, Responder};
 use indexmap::IndexMap;
 use maud::{html, Markup};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use urlencoding::encode;
 
 use super::{get_workdir, ArchiveYear, ListingPageConfig, ListingPageMode, ListingPageOrdering};
@@ -53,7 +54,12 @@ fn reddit_layout_full(title: &str, content: Markup, __site: &str, __route: &str)
     }
 }
 
-fn reddit_post_card(item: &CrawlItem, site: &str, forced_author: &Option<String>) -> Markup {
+fn reddit_post_card(
+    item: &CrawlItem,
+    site: &str,
+    forced_author: &Option<String>,
+    work_dir_path: &PathBuf,
+) -> Markup {
     html! {
         article.reddit_post_card {
             header.post_header {
@@ -82,7 +88,7 @@ fn reddit_post_card(item: &CrawlItem, site: &str, forced_author: &Option<String>
                         }
                     }
                 }
-                @if let Some(thumb) = item.thumbnail_path() {
+                @if let Some(thumb) = item.thumbnail_path(work_dir_path) {
                     .post_preview {
                         img src=(format!("/{}/assets/{}", site, thumb)) alt=(item.title) {}
                     }
@@ -103,6 +109,7 @@ pub fn render_listing_page(
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
     let forced_author = workdir.config.forced_author.clone();
+    let work_dir_path = PathBuf::from(workdir.path.clone());
 
     let title = match &config.mode {
         ListingPageMode::All => match config.ordering {
@@ -126,7 +133,7 @@ pub fn render_listing_page(
             }
             .reddit_posts {
                 @for item in items {
-                    (reddit_post_card(item, &site, &forced_author))
+                    (reddit_post_card(item, &site, &forced_author, &work_dir_path))
                 }
             }
             // FIXME: Don't include a paginator if the sort order is random

@@ -1,4 +1,5 @@
 use std::fmt::Display;
+use std::path::PathBuf;
 
 use crate::collections::*;
 use crate::serde::*;
@@ -205,13 +206,71 @@ fn first_downloaded_image<'a>(mut arr: impl Iterator<Item = &'a FileCrawlType>) 
 }
 
 impl CrawlItem {
-    pub fn thumbnail_path(&self) -> Option<String> {
-        first_downloaded_image(self.previews.values().chain(self.files.values()))
+    pub fn thumbnail_path(&self, work_dir_path: &PathBuf) -> Option<String> {
+        // first check for explicit previews
+        let flat_previews = self.flat_previews();
+        let first_usable_preview_file = flat_previews
+            .values()
+            .find(|file| file.is_downloaded() && file.is_image());
+        if let Some(file) = first_usable_preview_file {
+            return match file {
+                FileCrawlType::Image { filename, .. } => Some(filename.clone()),
+                _ => panic!("We just checked that this was an image, but it's not"),
+            };
+        }
+
+        // then check for auto-generated thumbnails
+        //
+        // FIXME: Could be simpler and just check for existence of
+        // auto_thumbnails/${md5(key)}.jpg and the same for gifs and just
+        //return whichever exists.
+        let flat_files = self.flat_files();
+        let first_usable_file = flat_files
+            .values()
+            .find(|file| file.is_downloaded() && (file.is_image() || file.is_video()));
+
+        if let Some(file) = first_usable_file {
+            let auto_path = self.calculate_auto_thumbnail_path(work_dir_path, &file);
+            if auto_path.exists() {
+                Some(
+                    auto_path
+                        .strip_prefix(work_dir_path)
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string(),
+                )
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 
     /// Take the files and replace any intermediate files with their nested files
     pub fn flat_files(&self) -> IndexMap<String, FileCrawlType> {
         self.files
+            .clone()
+            .into_iter()
+            .flat_map(|(key, file)| match file {
+                FileCrawlType::Intermediate {
+                    ref nested,
+                    downloaded,
+                    ..
+                } => {
+                    if downloaded {
+                        nested.clone()
+                    } else {
+                        IndexMap::from([(key, file)])
+                    }
+                }
+                _ => IndexMap::from([(key, file)]),
+            })
+            .collect()
+    }
+
+    pub fn flat_previews(&self) -> IndexMap<String, FileCrawlType> {
+        self.previews
             .clone()
             .into_iter()
             .flat_map(|(key, file)| match file {

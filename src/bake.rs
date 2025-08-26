@@ -11,19 +11,19 @@ pub trait Bake {
 }
 
 impl FileCrawlType {
-    fn is_image(&self) -> bool {
+    pub fn is_image(&self) -> bool {
         matches!(self, FileCrawlType::Image { .. })
     }
 
-    fn is_video(&self) -> bool {
+    pub fn is_video(&self) -> bool {
         matches!(self, FileCrawlType::Video { .. })
     }
 }
 
 impl CrawlItem {
-    fn calculate_auto_thumbnail_path(
+    pub fn calculate_auto_thumbnail_path(
         &self,
-        work_dir: &WorkDir,
+        work_dir_path: &PathBuf,
         thumbnail_of: &FileCrawlType,
     ) -> PathBuf {
         let hash = md5::compute(self.key.as_bytes());
@@ -35,8 +35,7 @@ impl CrawlItem {
             _ => panic!("Cannot create thumbnail for non-image or non-video file"),
         };
 
-        work_dir
-            .path
+        work_dir_path
             .join("auto_thumbnails")
             .join(hash_str)
             .with_extension(extension)
@@ -44,10 +43,10 @@ impl CrawlItem {
 
     fn create_thumbnail(
         &self,
-        work_dir: &WorkDir,
+        work_dir_path: &PathBuf,
         thumbnail_of: &FileCrawlType,
     ) -> Result<(), Error> {
-        let thumbnail_path = self.calculate_auto_thumbnail_path(work_dir, thumbnail_of);
+        let thumbnail_path = self.calculate_auto_thumbnail_path(work_dir_path, thumbnail_of);
 
         if !thumbnail_path.parent().unwrap().exists() {
             std::fs::create_dir_all(thumbnail_path.parent().unwrap()).unwrap();
@@ -65,7 +64,7 @@ impl CrawlItem {
                     .arg("-t")
                     .arg("3")
                     .arg("-i")
-                    .arg(work_dir.path.join(filename).to_str().unwrap())
+                    .arg(work_dir_path.join(filename).to_str().unwrap())
                     .arg("-vf")
                     .arg("fps=10,scale=320:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse")
                     .arg("-loop")
@@ -78,7 +77,7 @@ impl CrawlItem {
             FileCrawlType::Image { filename, .. } => {
                 let _output = Command::new("ffmpeg")
                     .arg("-i")
-                    .arg(work_dir.path.join(filename).to_str().unwrap())
+                    .arg(work_dir_path.join(filename).to_str().unwrap())
                     .arg("-vf")
                     .arg("scale=320:-1")
                     .arg(thumbnail_path.to_str().unwrap())
@@ -108,10 +107,12 @@ impl Bake for WorkDir {
                     .find(|file| file.is_downloaded() && (file.is_image() || file.is_video()));
 
                 if let Some(first_usable_file) = first_usable_file {
-                    let thumbnail_path =
-                        item.calculate_auto_thumbnail_path(self, first_usable_file);
+                    let thumbnail_path = item.calculate_auto_thumbnail_path(
+                        &PathBuf::from(self.path.clone()),
+                        first_usable_file,
+                    );
                     if !thumbnail_path.exists() {
-                        item.create_thumbnail(self, first_usable_file)
+                        item.create_thumbnail(&PathBuf::from(self.path.clone()), first_usable_file)
                             .expect("Failed to create thumbnail");
                         println!(
                             "{} created auto thumbnail ({})",
