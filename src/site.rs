@@ -178,33 +178,6 @@ impl crate::collections::GetKey for CrawlItem {
     }
 }
 
-fn first_downloaded_image<'a>(mut arr: impl Iterator<Item = &'a FileCrawlType>) -> Option<String> {
-    arr.find_map(|file| match file {
-        FileCrawlType::Image {
-            filename,
-            downloaded,
-            ..
-        } => {
-            if *downloaded {
-                Some(filename.clone())
-            } else {
-                None
-            }
-        }
-        FileCrawlType::Video { .. } => None,
-        FileCrawlType::Intermediate {
-            downloaded, nested, ..
-        } => {
-            if *downloaded {
-                first_downloaded_image(nested.values())
-            } else {
-                None
-            }
-        }
-        FileCrawlType::Text { .. } => None,
-    })
-}
-
 impl CrawlItem {
     pub fn thumbnail_path(&self, work_dir_path: &PathBuf) -> Option<String> {
         // first check for explicit previews
