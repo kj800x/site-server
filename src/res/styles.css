@@ -127,15 +127,19 @@ body {
   position: relative;
   padding-top: 100%;
   background: var(--color-bg-secondary);
-}
 
-.item_thumb_img img {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  img, video {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  video {
+    pointer-events: none;
+  }
 }
 
 .no_thumbnail {
@@ -675,14 +679,19 @@ dd {
     height: 100%;
     border-radius: 16px;
     max-height: 500px;
+
+    img, video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      border-radius: 16px;
+    }
+
+    video {
+      pointer-events: none;
+    }
 }
 
-.post_preview img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    border-radius: 16px;
-}
 
 .post_tags {
     display: flex;

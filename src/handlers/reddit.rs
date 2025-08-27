@@ -89,8 +89,16 @@ fn reddit_post_card(
                     }
                 }
                 @if let Some(thumb) = item.thumbnail_path(work_dir_path) {
-                    .post_preview {
-                        img src=(format!("/{}/assets/{}", site, thumb)) alt=(item.title) {}
+                    @if thumb.ends_with(".mp4") {
+                        .post_preview {
+                            video.thumbnail_preview width="320" height="auto" autoplay loop muted playsinline {
+                                source src=(format!("/{}/assets/{}", site, thumb)) {}
+                            }
+                        }
+                    } @else {
+                        .post_preview {
+                            img src=(format!("/{}/assets/{}", site, thumb)) alt=(item.title) {}
+                        }
                     }
                 }
             }

@@ -41,7 +41,13 @@ fn item_thumbnail(item: &CrawlItem, site: &str, work_dir_path: &PathBuf) -> Mark
         a.item_thumb_container href=(format!("/{}/booru/item/{}", site, encode(&item.key))) {
             .item_thumb_img {
                 @if let Some(thumb) = item.thumbnail_path(work_dir_path) {
-                    img src=(format!("/{}/assets/{}", site, thumb)) {}
+                    @if thumb.ends_with(".mp4") {
+                        video.thumbnail_preview autoplay loop muted playsinline {
+                            source src=(format!("/{}/assets/{}", site, thumb)) {}
+                        }
+                    } @else {
+                        img src=(format!("/{}/assets/{}", site, thumb)) alt=(item.title) {}
+                    }
                 } @else {
                     p.no_thumbnail { "No thumbnail" }
                 }

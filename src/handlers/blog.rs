@@ -28,8 +28,16 @@ fn blog_post_card(item: &CrawlItem, site: &str, work_dir_path: &PathBuf) -> Mark
                 }
             }
             @if let Some(thumb) = item.thumbnail_path(work_dir_path) {
-                .post_thumbnail {
-                    img src=(format!("/{}/assets/{}", site, thumb)) alt=(item.title) {}
+                @if thumb.ends_with(".mp4") {
+                    .post_preview {
+                        video.thumbnail_preview autoplay loop muted playsinline {
+                            source src=(format!("/{}/assets/{}", site, thumb)) {}
+                        }
+                    }
+                } @else {
+                    .post_preview {
+                        img src=(format!("/{}/assets/{}", site, thumb)) alt=(item.title) {}
+                    }
                 }
             }
             .post_excerpt {
