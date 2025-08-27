@@ -40,9 +40,15 @@ fn video_length(filename: &str) -> f64 {
         .output()
         .expect("Failed to get video length");
 
-    let duration = String::from_utf8(output.stdout).unwrap();
-    let duration = duration.split_whitespace().next().unwrap();
-    duration.parse::<f64>().unwrap()
+    let duration =
+        String::from_utf8(output.stdout).expect("Failed to parse ffprobe output as UTF-8");
+    let duration = duration
+        .split_whitespace()
+        .next()
+        .expect("Failed to get duration from ffprobe output");
+    duration
+        .parse::<f64>()
+        .expect("Failed to parse duration as float")
 }
 
 pub trait Bake {
@@ -86,23 +92,37 @@ impl CrawlItem {
         thumbnail_of: &FileCrawlType,
     ) -> Result<(), Error> {
         let thumbnail_path = self.calculate_auto_thumbnail_path(work_dir_path, thumbnail_of);
+        let thumbnail_dir = thumbnail_path
+            .parent()
+            .expect("Failed to resolve auto thumbnail directory");
 
-        if !thumbnail_path.parent().unwrap().exists() {
-            std::fs::create_dir_all(thumbnail_path.parent().unwrap()).unwrap();
+        if !thumbnail_dir.exists() {
+            std::fs::create_dir_all(thumbnail_dir)
+                .expect("Failed to create auto thumbnail directory");
+
             println!(
                 "Created auto thumbnail directory ({})",
-                thumbnail_path.parent().unwrap().display()
+                thumbnail_dir.display()
             );
         }
 
         match thumbnail_of {
             FileCrawlType::Video { filename, .. } => {
-                if is_audio_only(work_dir_path.join(filename).to_str().unwrap()) {
+                let video_path = work_dir_path.join(filename);
+                if !video_path.exists() {
+                    println!("{} does not exist, skipping thumbnail", filename);
+                    return Ok(());
+                }
+
+                let video_path_str = video_path.to_str().unwrap();
+                let thumbnail_path_str = thumbnail_path.to_str().unwrap();
+
+                if is_audio_only(video_path_str) {
                     println!("{} is audio only, skipping thumbnail", filename);
                     return Ok(());
                 }
 
-                let length = video_length(work_dir_path.join(filename).to_str().unwrap());
+                let length = video_length(video_path_str);
                 let offset = (length / 3.0).round() as u64;
                 let duration = min(offset, 3);
 
@@ -112,7 +132,7 @@ impl CrawlItem {
                     .arg("-t")
                     .arg(duration.to_string())
                     .arg("-i")
-                    .arg(work_dir_path.join(filename).to_str().unwrap())
+                    .arg(video_path_str)
                     .arg("-vf")
                     .arg("scale=320:-2,fps=15")
                     .arg("-c:v")
@@ -124,7 +144,7 @@ impl CrawlItem {
                     .arg("-an")
                     .arg("-movflags")
                     .arg("+faststart")
-                    .arg(thumbnail_path.to_str().unwrap())
+                    .arg(thumbnail_path_str)
                     .output()
                     .expect("Failed to create video thumbnail");
 
@@ -139,12 +159,21 @@ impl CrawlItem {
             }
 
             FileCrawlType::Image { filename, .. } => {
+                let image_path = work_dir_path.join(filename);
+                if !image_path.exists() {
+                    println!("{} does not exist, skipping thumbnail", filename);
+                    return Ok(());
+                }
+
+                let image_path_str = image_path.to_str().unwrap();
+                let thumbnail_path_str = thumbnail_path.to_str().unwrap();
+
                 let output = Command::new("ffmpeg")
                     .arg("-i")
-                    .arg(work_dir_path.join(filename).to_str().unwrap())
+                    .arg(image_path_str)
                     .arg("-vf")
                     .arg("scale=320:-1")
-                    .arg(thumbnail_path.to_str().unwrap())
+                    .arg(thumbnail_path_str)
                     .output()
                     .expect("Failed to create image thumbnail");
 
