@@ -57,7 +57,6 @@ fn blog_layout(title: &str, content: Markup, site: &str, route: &str) -> Markup 
             head {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1" {}
-                (super::Css("/res/styles.css"))
                 (super::scripts())
                 title { (title) }
             }

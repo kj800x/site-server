@@ -17,7 +17,6 @@ fn reddit_layout(title: &str, content: Markup, site: &str, route: &str) -> Marku
             head {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1" {}
-                (super::Css("/res/styles.css"))
                 (super::scripts())
                 title { (title) }
             }
@@ -40,7 +39,6 @@ fn reddit_layout_full(title: &str, content: Markup, __site: &str, __route: &str)
             head {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1" {}
-                (super::Css("/res/styles.css"))
                 (super::scripts())
                 title { (title) }
             }

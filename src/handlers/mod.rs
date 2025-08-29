@@ -114,6 +114,8 @@ pub fn timeago(timestamp: u64) -> Markup {
 /// Common scripts for all pages
 pub fn scripts() -> Markup {
     html! {
+        (Css("/res/page-transitions.css"))
+        (Css("/res/styles.css"))
         script src="/res/htmx.min.js" {}
         script src="/res/detail_page.js" {}
         script src="/res/idiomorph.min.js" {}

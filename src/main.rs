@@ -88,7 +88,6 @@ async fn root_index_handler(
     return Ok(html! {
         html {
             head {
-                (handlers::Css("/res/styles.css"))
                 (handlers::scripts())
                 title { "Site Server"}
             }
@@ -200,6 +199,7 @@ async fn run() -> errors::Result<()> {
                             .exclude("/api/metrics"),
                     )
                     .service(serve_static_file!("styles.css"))
+                    .service(serve_static_file!("page-transitions.css"))
                     .service(serve_static_file!("detail_page.js"))
                     .service(serve_static_file!("idiomorph.min.js"))
                     .service(serve_static_file!("idiomorph-ext.min.js"))
