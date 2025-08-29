@@ -1,6 +1,7 @@
 use chrono::{Month, TimeZone, Utc};
 use maud::{html, Markup};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use urlencoding::encode;
 
 use super::{ArchiveYear, ListingPageConfig, ListingPageMode};
@@ -9,7 +10,7 @@ use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
 use crate::thread_safe_work_dir::ThreadSafeWorkDir;
 
 // Helper functions for rendering blog components
-fn blog_post_card(item: &CrawlItem, site: &str) -> Markup {
+fn blog_post_card(item: &CrawlItem, site: &str, work_dir_path: &PathBuf) -> Markup {
     let time = Utc
         .timestamp_millis_opt(item.source_published as i64)
         .unwrap();
@@ -26,9 +27,17 @@ fn blog_post_card(item: &CrawlItem, site: &str) -> Markup {
                     (time.format("%B %d, %Y"))
                 }
             }
-            @if let Some(thumb) = item.thumbnail_path() {
-                .post_thumbnail {
-                    img src=(format!("/{}/assets/{}", site, thumb)) alt=(item.title) {}
+            @if let Some(thumb) = item.thumbnail_path(work_dir_path) {
+                @if thumb.ends_with(".mp4") {
+                    .post_preview {
+                        video.thumbnail_preview autoplay loop muted playsinline {
+                            source src=(format!("/{}/assets/{}", site, thumb)) {}
+                        }
+                    }
+                } @else {
+                    .post_preview {
+                        img src=(format!("/{}/assets/{}", site, thumb)) alt=(item.title) {}
+                    }
                 }
             }
             .post_excerpt {
@@ -86,6 +95,7 @@ pub fn render_listing_page(
 ) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
+    let work_dir_path = PathBuf::from(workdir.path.clone());
 
     let title = match &config.mode {
         ListingPageMode::All => String::new(),
@@ -102,7 +112,7 @@ pub fn render_listing_page(
     let content = html! {
         .blog_posts {
             @for item in items {
-                (blog_post_card(item, &site))
+                (blog_post_card(item, &site, &work_dir_path))
             }
         }
         (super::paginator(config.page, config.total, config.per_page, &config.paginator_prefix(&site, "blog")))

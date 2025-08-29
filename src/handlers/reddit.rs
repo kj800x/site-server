@@ -2,6 +2,7 @@ use actix_web::{get, web, Responder};
 use indexmap::IndexMap;
 use maud::{html, Markup};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use urlencoding::encode;
 
 use super::{get_workdir, ArchiveYear, ListingPageConfig, ListingPageMode, ListingPageOrdering};
@@ -51,15 +52,22 @@ fn reddit_layout_full(title: &str, content: Markup, __site: &str, __route: &str)
     }
 }
 
-fn reddit_post_card(item: &CrawlItem, site: &str) -> Markup {
+fn reddit_post_card(
+    item: &CrawlItem,
+    site: &str,
+    forced_author: &Option<String>,
+    work_dir_path: &PathBuf,
+) -> Markup {
     html! {
         article.reddit_post_card {
             header.post_header {
                 span.post_author {
-                    @if let Some(author) = item.meta.get("author") {
-                        (author.as_str().unwrap_or("unknown user"))
+                    @if let Some(author) = item.meta.get("author").iter().flat_map(|x| x.as_str()).next() {
+                        (author)
+                    } @else if let Some(forced_author) = forced_author.as_ref() {
+                        (forced_author)
                     } @else {
-                        "unknown_user"
+                        "unknown"
                     }
                 }
                 span.post_time { (timeago(item.source_published as u64)) }
@@ -78,9 +86,17 @@ fn reddit_post_card(item: &CrawlItem, site: &str) -> Markup {
                         }
                     }
                 }
-                @if let Some(thumb) = item.thumbnail_path() {
-                    .post_preview {
-                        img src=(format!("/{}/assets/{}", site, thumb)) alt=(item.title) {}
+                @if let Some(thumb) = item.thumbnail_path(work_dir_path) {
+                    @if thumb.ends_with(".mp4") {
+                        .post_preview {
+                            video.thumbnail_preview width="320" height="auto" autoplay loop muted playsinline {
+                                source src=(format!("/{}/assets/{}", site, thumb)) {}
+                            }
+                        }
+                    } @else {
+                        .post_preview {
+                            img src=(format!("/{}/assets/{}", site, thumb)) alt=(item.title) {}
+                        }
                     }
                 }
             }
@@ -98,6 +114,8 @@ pub fn render_listing_page(
 ) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
+    let forced_author = workdir.config.forced_author.clone();
+    let work_dir_path = PathBuf::from(workdir.path.clone());
 
     let title = match &config.mode {
         ListingPageMode::All => match config.ordering {
@@ -121,7 +139,7 @@ pub fn render_listing_page(
             }
             .reddit_posts {
                 @for item in items {
-                    (reddit_post_card(item, &site))
+                    (reddit_post_card(item, &site, &forced_author, &work_dir_path))
                 }
             }
             // FIXME: Don't include a paginator if the sort order is random
@@ -280,15 +298,18 @@ pub fn render_detail_page(
 ) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
+    let forced_author = workdir.config.forced_author.clone();
 
     let content = html! {
         article.reddit_post_detail {
             header.post_header {
                 span.post_author {
-                    @if let Some(author) = item.meta.get("author") {
-                        (author.as_str().unwrap_or("unknown_user"))
+                    @if let Some(author) = item.meta.get("author").iter().flat_map(|x| x.as_str()).next() {
+                        (author)
+                    } @else if let Some(forced_author) = forced_author.as_ref() {
+                        (forced_author)
                     } @else {
-                        "unknown_user"
+                        "unknown"
                     }
                 }
                 span.post_time { (timeago(item.source_published as u64)) }

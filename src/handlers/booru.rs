@@ -1,5 +1,6 @@
 use maud::{html, Markup};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use urlencoding::encode;
 
 use crate::handlers::PaginatorPrefix;
@@ -34,12 +35,18 @@ fn booru_layout(title: &str, content: Markup, site: &str, route: &str) -> Markup
     }
 }
 
-fn item_thumbnail(item: &CrawlItem, site: &str) -> Markup {
+fn item_thumbnail(item: &CrawlItem, site: &str, work_dir_path: &PathBuf) -> Markup {
     html! {
         a.item_thumb_container href=(format!("/{}/booru/item/{}", site, encode(&item.key))) {
             .item_thumb_img {
-                @if let Some(thumb) = item.thumbnail_path() {
-                    img src=(format!("/{}/assets/{}", site, thumb)) {}
+                @if let Some(thumb) = item.thumbnail_path(work_dir_path) {
+                    @if thumb.ends_with(".mp4") {
+                        video.thumbnail_preview autoplay loop muted playsinline {
+                            source src=(format!("/{}/assets/{}", site, thumb)) {}
+                        }
+                    } @else {
+                        img src=(format!("/{}/assets/{}", site, thumb)) alt=(item.title) {}
+                    }
                 } @else {
                     p.no_thumbnail { "No thumbnail" }
                 }
@@ -64,6 +71,7 @@ pub fn render_listing_page(
 ) -> Markup {
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
+    let work_dir_path = PathBuf::from(workdir.path.clone());
 
     let title = match &config.mode {
         ListingPageMode::All => String::new(),
@@ -75,7 +83,7 @@ pub fn render_listing_page(
         ( super::paginator(config.page, config.total, config.per_page, &config.paginator_prefix(&site, "booru")) )
         .item_thumb_grid {
             @for item in items {
-                ( item_thumbnail(item, &site) )
+                ( item_thumbnail(item, &site, &work_dir_path) )
             }
         }
         ( super::paginator(config.page, config.total, config.per_page, &config.paginator_prefix(&site, "booru")) )

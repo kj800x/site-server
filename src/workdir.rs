@@ -1,7 +1,7 @@
 use std::{
     fs::File,
     ops::{Deref, DerefMut},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use crate::{errors::*, site::FileCrawlType};
@@ -18,6 +18,7 @@ pub struct Config {
     pub site: String,
     pub slug: String,
     pub label: String,
+    pub forced_author: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -43,6 +44,13 @@ impl SiteItems {
                 FileCrawlType::Intermediate { downloaded, .. } => *downloaded,
                 FileCrawlType::Text { .. } => true,
             })
+        });
+    }
+
+    pub fn remove_duplicate_tags(&mut self) {
+        self.items.iter_mut().for_each(|(_, v)| {
+            v.tags.sort();
+            v.tags.dedup();
         });
     }
 }
@@ -79,8 +87,8 @@ pub struct WorkDir {
 
 #[allow(dead_code)]
 impl WorkDir {
-    pub fn new(path_str: String) -> Result<Self> {
-        let path = Path::new(&path_str);
+    pub fn new<P: Into<PathBuf>>(p: P) -> Result<Self> {
+        let path = p.into();
         let config_path = path.join("config.json");
         let config_file = File::open(config_path).context("Unable to open config.json")?;
         let config: Config =
@@ -115,6 +123,7 @@ impl WorkDir {
         };
 
         crawled.sort();
+        crawled.remove_duplicate_tags();
         if std::env::var("ALLOW_NO_FILES").is_err() {
             crawled.remove_items_without_files();
         }

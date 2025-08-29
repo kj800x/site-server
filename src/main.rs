@@ -12,6 +12,7 @@ use chrono::Utc;
 use clap::Parser;
 use opentelemetry::global;
 use opentelemetry_sdk::metrics::MeterProvider;
+use site_server::bake::Bake;
 use std::io::Read;
 use std::{thread, time::Duration};
 
@@ -45,6 +46,7 @@ struct StartTime(i64);
 #[derive(clap::Subcommand)]
 enum Commands {
     Serve { work_dirs: Vec<String> },
+    Bake { work_dirs: Vec<String> },
 }
 
 #[get("/healthz")]
@@ -143,6 +145,23 @@ async fn run() -> errors::Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
+        Commands::Bake { work_dirs } => {
+            println!("Loading WorkDirs...");
+            let mut work_dirs_vec = vec![];
+            for work_dir in work_dirs.into_iter() {
+                println!("Loading WorkDir: {}", work_dir);
+                let work_dir = WorkDir::new(work_dir.to_string()).expect("Failed to load WorkDir");
+                work_dirs_vec.push(work_dir);
+            }
+
+            for work_dir in work_dirs_vec.iter() {
+                println!("Baking WorkDir: {}", work_dir.config.label);
+                work_dir.bake_all();
+            }
+
+            Ok(())
+        }
+
         Commands::Serve { work_dirs } => {
             println!("Loading WorkDirs...");
             let mut work_dirs_vec = vec![];
