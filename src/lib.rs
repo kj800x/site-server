@@ -54,3 +54,4 @@ pub mod serde;
 pub mod site;
 pub mod thread_safe_work_dir;
 pub mod workdir;
+pub mod workdir_dao;

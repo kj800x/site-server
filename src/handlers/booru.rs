@@ -5,7 +5,6 @@ use urlencoding::encode;
 
 use crate::handlers::PaginatorPrefix;
 use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
-use crate::thread_safe_work_dir::ThreadSafeWorkDir;
 
 use super::{ArchiveYear, ListingPageConfig, ListingPageMode};
 
@@ -64,7 +63,7 @@ fn item_thumbnail(item: &CrawlItem, site: &str, work_dir_path: &PathBuf) -> Mark
 }
 
 pub fn render_listing_page(
-    work_dir: &ThreadSafeWorkDir,
+    work_dir: &WorkDirDao,
     config: ListingPageConfig,
     items: &[CrawlItem],
     route: &str,
@@ -93,7 +92,7 @@ pub fn render_listing_page(
 }
 
 pub fn render_detail_page(
-    work_dir: &ThreadSafeWorkDir,
+    work_dir: &WorkDirDao,
     item: &CrawlItem,
     file: &FileCrawlType,
     route: &str,
@@ -164,7 +163,7 @@ pub fn render_detail_page(
 }
 
 pub fn render_tags_page(
-    work_dir: &ThreadSafeWorkDir,
+    work_dir: &WorkDirDao,
     tags: &HashMap<String, usize>,
     tag_order: &Vec<String>,
     route: &str,
@@ -192,7 +191,7 @@ pub fn render_tags_page(
 }
 
 pub fn render_archive_page(
-    work_dir: &ThreadSafeWorkDir,
+    work_dir: &WorkDirDao,
     archive: &Vec<ArchiveYear>,
     route: &str,
 ) -> Markup {

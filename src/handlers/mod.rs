@@ -204,8 +204,6 @@ pub fn paginator(page: usize, total: usize, per_page: usize, prefix: &str) -> Ma
 // Common types used across handlers
 pub struct WorkDirPrefix(pub String);
 
-pub type ThreadSafeWorkDir = crate::thread_safe_work_dir::ThreadSafeWorkDir;
-
 pub enum ListingPageMode {
     All,
     ByTag { tag: String },
@@ -267,34 +265,34 @@ pub enum SiteRendererType {
 pub trait SiteRenderer {
     fn render_listing_page(
         &self,
-        work_dir: &ThreadSafeWorkDir,
+        work_dir: &WorkDirDao,
         config: ListingPageConfig,
         items: &[CrawlItem],
         route: &str,
     ) -> Markup;
     fn render_detail_page(
         &self,
-        work_dir: &ThreadSafeWorkDir,
+        work_dir: &WorkDirDao,
         item: &CrawlItem,
         file: &FileCrawlType,
         route: &str,
     ) -> Markup;
     fn render_tags_page(
         &self,
-        work_dir: &ThreadSafeWorkDir,
+        work_dir: &WorkDirDao,
         tags: &HashMap<String, usize>,
         tag_order: &Vec<String>,
         route: &str,
     ) -> Markup;
     fn render_archive_page(
         &self,
-        work_dir: &ThreadSafeWorkDir,
+        work_dir: &WorkDirDao,
         archive: &Vec<ArchiveYear>,
         route: &str,
     ) -> Markup;
     fn render_detail_full_page(
         &self,
-        work_dir: &ThreadSafeWorkDir,
+        work_dir: &WorkDirDao,
         item: &CrawlItem,
         file: &FileCrawlType,
         route: &str,
@@ -305,7 +303,7 @@ pub trait SiteRenderer {
 impl SiteRenderer for SiteRendererType {
     fn render_listing_page(
         &self,
-        work_dir: &ThreadSafeWorkDir,
+        work_dir: &WorkDirDao,
         config: ListingPageConfig,
         items: &[CrawlItem],
         route: &str,
@@ -319,7 +317,7 @@ impl SiteRenderer for SiteRendererType {
 
     fn render_detail_page(
         &self,
-        work_dir: &ThreadSafeWorkDir,
+        work_dir: &WorkDirDao,
         item: &CrawlItem,
         file: &FileCrawlType,
         route: &str,
@@ -333,7 +331,7 @@ impl SiteRenderer for SiteRendererType {
 
     fn render_tags_page(
         &self,
-        work_dir: &ThreadSafeWorkDir,
+        work_dir: &WorkDirDao,
         tags: &HashMap<String, usize>,
         tag_order: &Vec<String>,
         route: &str,
@@ -347,7 +345,7 @@ impl SiteRenderer for SiteRendererType {
 
     fn render_archive_page(
         &self,
-        work_dir: &ThreadSafeWorkDir,
+        work_dir: &WorkDirDao,
         archive: &Vec<ArchiveYear>,
         route: &str,
     ) -> Markup {
@@ -360,7 +358,7 @@ impl SiteRenderer for SiteRendererType {
 
     fn render_detail_full_page(
         &self,
-        work_dir: &ThreadSafeWorkDir,
+        work_dir: &WorkDirDao,
         item: &CrawlItem,
         file: &FileCrawlType,
         route: &str,

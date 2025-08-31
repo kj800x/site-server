@@ -2,6 +2,8 @@ use actix_web::web;
 use actix_web_httpauth::extractors::basic::{BasicAuth, Config};
 use actix_web_httpauth::extractors::AuthenticationError;
 
+use crate::thread_safe_work_dir::ThreadSafeWorkDir;
+
 // Authentication validator function
 pub async fn validator(
     req: actix_web::dev::ServiceRequest,
@@ -51,7 +53,7 @@ pub fn workdir_locked_error() -> actix_web::Error {
 
 // Helper function to get workdir from ThreadSafeWorkDir
 pub fn get_workdir<'a>(
-    workdir: &'a web::Data<super::ThreadSafeWorkDir>,
+    workdir: &'a web::Data<ThreadSafeWorkDir>,
 ) -> Result<std::sync::RwLockReadGuard<'a, crate::workdir::WorkDir>, actix_web::Error> {
     let workdir_lock = workdir.work_dir.try_read();
     match workdir_lock {

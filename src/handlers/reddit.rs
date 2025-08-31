@@ -9,7 +9,7 @@ use super::{get_workdir, ArchiveYear, ListingPageConfig, ListingPageMode, Listin
 use crate::collections::GetKey;
 use crate::handlers::{format_year_month, timeago, PaginatorPrefix};
 use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
-use crate::thread_safe_work_dir::ThreadSafeWorkDir;
+use crate::workdir_dao::WorkDirDao;
 
 fn reddit_layout(title: &str, content: Markup, site: &str, route: &str) -> Markup {
     html! {
@@ -107,7 +107,7 @@ fn reddit_post_card(
 
 // Public functions required by SiteRenderer trait
 pub fn render_listing_page(
-    work_dir: &ThreadSafeWorkDir,
+    work_dir: &WorkDirDao,
     config: ListingPageConfig,
     items: &[CrawlItem],
     route: &str,
@@ -234,7 +234,7 @@ pub fn render_media_viewer(site: &str, item: &CrawlItem, file: &FileCrawlType) -
 
 #[get("/item-fragment/{id}/{file_id}")]
 pub async fn media_viewer_fragment_handler(
-    workdir: web::Data<ThreadSafeWorkDir>,
+    workdir: web::Data<WorkDirDao>,
     path: web::Path<(String, String)>,
 ) -> impl Responder {
     let (id, file_id) = path.into_inner();
@@ -291,7 +291,7 @@ pub fn render_full_media_viewer(site: &str, item: &CrawlItem, file: &FileCrawlTy
 }
 
 pub fn render_detail_page(
-    work_dir: &ThreadSafeWorkDir,
+    work_dir: &WorkDirDao,
     item: &CrawlItem,
     file: &FileCrawlType,
     route: &str,
@@ -358,7 +358,7 @@ pub fn render_detail_page(
 }
 
 pub fn render_detail_full_page(
-    work_dir: &ThreadSafeWorkDir,
+    work_dir: &WorkDirDao,
     item: &CrawlItem,
     file: &FileCrawlType,
     route: &str,
@@ -376,7 +376,7 @@ pub fn render_detail_full_page(
 }
 
 pub fn render_tags_page(
-    work_dir: &ThreadSafeWorkDir,
+    work_dir: &WorkDirDao,
     tags: &HashMap<String, usize>,
     tag_order: &Vec<String>,
     route: &str,
@@ -404,7 +404,7 @@ pub fn render_tags_page(
 }
 
 pub fn render_archive_page(
-    work_dir: &ThreadSafeWorkDir,
+    work_dir: &WorkDirDao,
     archive: &Vec<ArchiveYear>,
     route: &str,
 ) -> Markup {

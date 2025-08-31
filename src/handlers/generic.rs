@@ -15,13 +15,10 @@ use crate::{
 
 use super::{
     get_workdir, ListingPageConfig, ListingPageMode, ListingPageOrdering, SiteRenderer,
-    SiteRendererType, ThreadSafeWorkDir,
+    SiteRendererType, WorkDirDao,
 };
 
-fn resolve_listing_page(
-    workdir: &web::Data<ThreadSafeWorkDir>,
-    mode: &ListingPageMode,
-) -> Vec<CrawlItem> {
+fn resolve_listing_page(workdir: &web::Data<WorkDirDao>, mode: &ListingPageMode) -> Vec<CrawlItem> {
     let workdir = get_workdir(workdir).unwrap();
 
     match mode {
@@ -102,7 +99,7 @@ pub async fn generic_index_root_handler(
 #[get("/random")]
 pub async fn generic_random_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    workdir: web::Data<WorkDirDao>,
 ) -> impl Responder {
     let renderer = renderer.into_inner();
     let items = resolve_listing_page(&workdir, &ListingPageMode::All);
@@ -121,7 +118,7 @@ pub async fn generic_random_handler(
 #[get("/latest")]
 pub async fn generic_latest_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    workdir: web::Data<WorkDirDao>,
 ) -> impl Responder {
     let renderer = renderer.into_inner();
     let items = resolve_listing_page(&workdir, &ListingPageMode::All);
@@ -140,7 +137,7 @@ pub async fn generic_latest_handler(
 #[get("/latest/{page}")]
 pub async fn generic_latest_page_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    workdir: web::Data<WorkDirDao>,
     page: web::Path<usize>,
 ) -> impl Responder {
     let renderer = renderer.into_inner();
@@ -160,7 +157,7 @@ pub async fn generic_latest_page_handler(
 #[get("/oldest")]
 pub async fn generic_oldest_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    workdir: web::Data<WorkDirDao>,
 ) -> impl Responder {
     let renderer = renderer.into_inner();
     let items = resolve_listing_page(&workdir, &ListingPageMode::All);
@@ -179,7 +176,7 @@ pub async fn generic_oldest_handler(
 #[get("/oldest/{page}")]
 pub async fn generic_oldest_page_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    workdir: web::Data<WorkDirDao>,
     page: web::Path<usize>,
 ) -> impl Responder {
     let renderer = renderer.into_inner();
@@ -209,7 +206,7 @@ pub enum TagSort {
 #[get("/tags")]
 pub async fn generic_tags_index_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    workdir: web::Data<WorkDirDao>,
     query: web::Query<TagParam>,
 ) -> impl Responder {
     let renderer = renderer.into_inner();
@@ -257,7 +254,7 @@ pub async fn generic_tags_index_handler(
 #[get("/tag/{tag}")]
 pub async fn generic_tag_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    workdir: web::Data<WorkDirDao>,
     tag: web::Path<String>,
 ) -> impl Responder {
     let renderer = renderer.into_inner();
@@ -277,7 +274,7 @@ pub async fn generic_tag_handler(
 #[get("/tag/{tag}/{page}")]
 pub async fn generic_tag_page_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    workdir: web::Data<WorkDirDao>,
     path: web::Path<(String, usize)>,
 ) -> impl Responder {
     let renderer = renderer.into_inner();
@@ -322,7 +319,7 @@ pub struct ArchiveYear {
 #[get("/archive")]
 pub async fn generic_archive_index_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    workdir: web::Data<WorkDirDao>,
 ) -> impl Responder {
     let renderer = renderer.into_inner();
     let archive = {
@@ -368,7 +365,7 @@ pub async fn generic_archive_index_handler(
 #[get("/archive/{year}/{month}")]
 pub async fn generic_archive_page_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    workdir: web::Data<WorkDirDao>,
     page: web::Path<(usize, usize)>,
 ) -> impl Responder {
     let renderer = renderer.into_inner();
@@ -402,7 +399,7 @@ pub async fn generic_archive_page_handler(
 #[get("/item/{id}")]
 pub async fn generic_detail_redirect(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    workdir: web::Data<WorkDirDao>,
     path: web::Path<String>,
     workdir_prefix: web::Data<WorkDirPrefix>,
 ) -> impl Responder {
@@ -442,7 +439,7 @@ pub async fn generic_detail_redirect(
 #[get("/item/{id}/{file_id}")]
 pub async fn generic_detail_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    workdir: web::Data<WorkDirDao>,
     path: web::Path<(String, String)>,
 ) -> impl Responder {
     let (id, file_id) = path.into_inner();
@@ -466,7 +463,7 @@ pub async fn generic_detail_handler(
 #[get("/item-full/{id}/{file_id}")]
 pub async fn generic_detail_full_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    workdir: web::Data<WorkDirDao>,
     path: web::Path<(String, String)>,
 ) -> impl Responder {
     let (id, file_id) = path.into_inner();

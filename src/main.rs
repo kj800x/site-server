@@ -12,7 +12,7 @@ use chrono::Utc;
 use clap::Parser;
 use opentelemetry::global;
 use opentelemetry_sdk::metrics::MeterProvider;
-use site_server::bake::Bake;
+use site_server::{bake::Bake, workdir_dao::WorkDirDao};
 use std::io::Read;
 use std::{thread, time::Duration};
 
@@ -29,8 +29,8 @@ use site_server::{
     serve_static_file, thread_safe_work_dir, workdir,
 };
 
-use handlers::{date_time_element, ThreadSafeWorkDir, WorkDirPrefix};
-use thread_safe_work_dir::ThreadSafeWorkDir as ThreadSafeWorkDirImpl;
+use handlers::{date_time_element, WorkDirPrefix};
+use thread_safe_work_dir::ThreadSafeWorkDir;
 use workdir::WorkDir;
 
 #[derive(Parser)]
@@ -51,7 +51,7 @@ enum Commands {
 
 #[get("/healthz")]
 async fn healthz(
-    site: web::Data<Vec<ThreadSafeWorkDir>>,
+    site: web::Data<Vec<WorkDirDao>>,
     start_time: web::Data<StartTime>,
 ) -> impl Responder {
     let sites = site
@@ -68,7 +68,7 @@ async fn healthz(
 
 #[get("/")]
 async fn root_index_handler(
-    site: web::Data<Vec<ThreadSafeWorkDir>>,
+    site: web::Data<Vec<WorkDirDao>>,
     start_time: web::Data<StartTime>,
 ) -> Result<impl Responder, actix_web::Error> {
     use maud::html;
@@ -164,13 +164,14 @@ async fn run() -> errors::Result<()> {
 
         Commands::Serve { work_dirs } => {
             println!("Loading WorkDirs...");
-            let mut work_dirs_vec = vec![];
+            let mut work_dirs_vec: Vec<WorkDirDao> = vec![];
+
             for work_dir in work_dirs.into_iter() {
                 println!("Loading WorkDir: {}", work_dir);
                 let work_dir = WorkDir::new(work_dir.to_string()).expect("Failed to load WorkDir");
-                let threadsafe_work_dir = ThreadSafeWorkDirImpl::new(work_dir);
+                let threadsafe_work_dir = ThreadSafeWorkDir::new(work_dir);
                 let update_clone = threadsafe_work_dir.clone();
-                work_dirs_vec.push(threadsafe_work_dir);
+                work_dirs_vec.push(WorkDirDao::Local(threadsafe_work_dir));
 
                 // Spawn a thread to watch the workdir for changes
                 thread::spawn(move || loop {
@@ -227,7 +228,7 @@ async fn run() -> errors::Result<()> {
                     .service(root_index_handler);
 
                 for workdir in work_dirs_vec.iter() {
-                    let slug = workdir.work_dir.read().unwrap().config.slug.clone();
+                    let slug = workdir.slug();
 
                     let renderers = vec![
                         handlers::SiteRendererType::Blog,
@@ -268,11 +269,7 @@ async fn run() -> errors::Result<()> {
                             .service(
                                 // FIXME: Serving these files seems to exhaust the worker pool
                                 // and the server stops responding to requests. This aint good.
-                                Files::new(
-                                    "/assets",
-                                    workdir.work_dir.read().unwrap().path.clone(),
-                                )
-                                .prefer_utf8(true),
+                                Files::new("/assets", workdir.path()).prefer_utf8(true),
                             ),
                     );
                 }
