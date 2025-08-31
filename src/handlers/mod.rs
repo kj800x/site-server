@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use chrono::Utc;
 use maud::{html, Markup, PreEscaped};
@@ -33,6 +33,18 @@ impl maud::Render for Js {
         html! {
             script type="text/javascript" src=(self.0) {}
         }
+    }
+}
+pub trait ExtensionFix {
+    fn as_mp4(&self) -> String;
+}
+
+impl ExtensionFix for std::string::String {
+    fn as_mp4(&self) -> String {
+        PathBuf::from(self)
+            .with_extension("mp4")
+            .to_string_lossy()
+            .to_string()
     }
 }
 

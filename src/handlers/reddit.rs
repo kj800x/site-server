@@ -7,7 +7,7 @@ use urlencoding::encode;
 
 use super::{get_workdir, ArchiveYear, ListingPageConfig, ListingPageMode, ListingPageOrdering};
 use crate::collections::GetKey;
-use crate::handlers::{format_year_month, timeago, PaginatorPrefix};
+use crate::handlers::{format_year_month, timeago, ExtensionFix, PaginatorPrefix};
 use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
 use crate::thread_safe_work_dir::ThreadSafeWorkDir;
 
@@ -214,7 +214,7 @@ pub fn render_media_viewer(site: &str, item: &CrawlItem, file: &FileCrawlType) -
                 }
                 FileCrawlType::Video { filename, downloaded, .. } => {
                     @if *downloaded {
-                        @let coerced_filename = filename.split('.').next().unwrap_or("").to_string() + ".mp4";
+                        @let coerced_filename = filename.as_mp4();
                         figure.post_figure {
                             video.post_video controls autoplay {
                                 source src=(format!("/{}/assets/{}", site, coerced_filename)) {}
@@ -268,7 +268,7 @@ pub fn render_full_media_viewer(site: &str, item: &CrawlItem, file: &FileCrawlTy
                 }
                 FileCrawlType::Video { filename, downloaded, .. } => {
                     @if *downloaded {
-                        @let coerced_filename = filename.split('.').next().unwrap_or("").to_string() + ".mp4";
+                        @let coerced_filename = filename.as_mp4();
                         figure.post_figure {
                             video.post_video controls autoplay {
                                 source src=(format!("/{}/assets/{}", site, coerced_filename)) {}

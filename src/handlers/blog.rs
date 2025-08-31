@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use urlencoding::encode;
 
 use super::{ArchiveYear, ListingPageConfig, ListingPageMode};
-use crate::handlers::PaginatorPrefix;
+use crate::handlers::{ExtensionFix, PaginatorPrefix};
 use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
 use crate::thread_safe_work_dir::ThreadSafeWorkDir;
 
@@ -154,7 +154,7 @@ pub fn render_detail_page(
                     }
                     FileCrawlType::Video { filename, downloaded, .. } => {
                         @if *downloaded {
-                            @let coerced_filename = filename.split('.').next().unwrap_or("").to_string() + ".mp4";
+                            @let coerced_filename = filename.as_mp4();
                             figure.post_figure {
                                 video.post_video controls autoplay {
                                     source src=(format!("/{}/assets/{}", site, coerced_filename)) {}
