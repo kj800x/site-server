@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use urlencoding::encode;
 
-use crate::handlers::PaginatorPrefix;
+use crate::handlers::{ExtensionFix, PaginatorPrefix};
 use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
 use crate::thread_safe_work_dir::ThreadSafeWorkDir;
 
@@ -17,7 +17,6 @@ fn booru_layout(title: &str, content: Markup, site: &str, route: &str) -> Markup
             head {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1" {}
-                (super::Css("/res/styles.css"))
                 (super::scripts())
                 title { (title) }
             }
@@ -116,7 +115,7 @@ pub fn render_detail_page(
                     }
                     FileCrawlType::Video { filename, downloaded, .. } => {
                         @if *downloaded {
-                            @let coerced_filename = filename.split('.').next().unwrap_or("").to_string() + ".mp4";
+                            @let coerced_filename = filename.as_mp4();
                             figure.post_figure {
                                 video.post_video controls autoplay {
                                     source src=(format!("/{}/assets/{}", site, coerced_filename)) {}
