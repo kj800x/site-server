@@ -110,7 +110,7 @@ pub async fn generic_random_handler(
         mode: ListingPageMode::All,
         ordering: ListingPageOrdering::Random,
         page: 1,
-        per_page: 50,
+        per_page: 15,
         total: items.len(),
     };
     let items = apply_selection(&items, &config);
@@ -129,7 +129,7 @@ pub async fn generic_latest_handler(
         mode: ListingPageMode::All,
         ordering: ListingPageOrdering::NewestFirst,
         page: 1,
-        per_page: 50,
+        per_page: 15,
         total: items.len(),
     };
     let items = apply_selection(&items, &config);
@@ -149,7 +149,7 @@ pub async fn generic_latest_page_handler(
         mode: ListingPageMode::All,
         ordering: ListingPageOrdering::NewestFirst,
         page: page.clone(),
-        per_page: 50,
+        per_page: 15,
         total: items.len(),
     };
     let items = apply_selection(&items, &config);
@@ -168,7 +168,7 @@ pub async fn generic_oldest_handler(
         mode: ListingPageMode::All,
         ordering: ListingPageOrdering::OldestFirst,
         page: 1,
-        per_page: 50,
+        per_page: 15,
         total: items.len(),
     };
     let items = apply_selection(&items, &config);
@@ -188,7 +188,7 @@ pub async fn generic_oldest_page_handler(
         mode: ListingPageMode::All,
         ordering: ListingPageOrdering::OldestFirst,
         page: page.clone(),
-        per_page: 50,
+        per_page: 15,
         total: items.len(),
     };
     let items = apply_selection(&items, &config);
@@ -266,7 +266,7 @@ pub async fn generic_tag_handler(
         mode: ListingPageMode::ByTag { tag: tag.clone() },
         ordering: ListingPageOrdering::NewestFirst,
         page: 1,
-        per_page: 50,
+        per_page: 15,
         total: items.len(),
     };
     let items = apply_selection(&items, &config);
@@ -293,7 +293,7 @@ pub async fn generic_tag_page_handler(
         },
         ordering: ListingPageOrdering::NewestFirst,
         page: path.1,
-        per_page: 50,
+        per_page: 15,
         total: items.len(),
     };
     let items = apply_selection(&items, &config);

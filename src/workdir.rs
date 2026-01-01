@@ -19,6 +19,8 @@ pub struct Config {
     pub slug: String,
     pub label: String,
     pub forced_author: Option<String>,
+    #[serde(default)]
+    pub hide_titles: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

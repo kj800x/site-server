@@ -59,9 +59,18 @@ fn reddit_post_card(
     site: &str,
     forced_author: &Option<String>,
     work_dir_path: &PathBuf,
+    hide_titles: bool,
 ) -> Markup {
+    let post_href = format!("/{}/r/item/{}", site, encode(&item.key));
+    let title_id = format!("post-title-{}", encode(&item.key));
+
     html! {
         article.reddit_post_card {
+            // Overlay link (covers the whole card)
+            a.card_overlay
+                href=(post_href)
+                aria-labelledby=(title_id) {}
+
             header.post_header {
                 span.post_author {
                     @if let Some(author) = item.meta.get("author").iter().flat_map(|x| x.as_str()).next() {
@@ -69,15 +78,17 @@ fn reddit_post_card(
                     } @else if let Some(forced_author) = forced_author.as_ref() {
                         (forced_author)
                     } @else {
-                        "unknown"
+                        (site)
                     }
                 }
                 span.post_time { (timeago(item.source_published as u64)) }
             }
+
             .post_content {
-                h2.post_title {
-                    a href=(format!("/{}/r/item/{}", site, encode(&item.key))) { (item.title) }
+                @if !hide_titles {
+                    h2.post_title id=(title_id) { (item.title) }
                 }
+
                 .post_tags {
                     @for tag in &item.tags {
                         @match tag {
@@ -88,6 +99,7 @@ fn reddit_post_card(
                         }
                     }
                 }
+
                 @if let Some(thumb) = item.thumbnail_path(work_dir_path) {
                     @if thumb.ends_with(".mp4") {
                         .post_preview {
@@ -117,6 +129,7 @@ pub fn render_listing_page(
     let workdir = work_dir.work_dir.read().unwrap();
     let site = workdir.config.slug.clone();
     let forced_author = workdir.config.forced_author.clone();
+    let hide_titles = workdir.config.hide_titles;
     let work_dir_path = PathBuf::from(workdir.path.clone());
 
     let title = match &config.mode {
@@ -141,7 +154,7 @@ pub fn render_listing_page(
             }
             .reddit_posts {
                 @for item in items {
-                    (reddit_post_card(item, &site, &forced_author, &work_dir_path))
+                    (reddit_post_card(item, &site, &forced_author, &work_dir_path, hide_titles))
                 }
             }
             // FIXME: Don't include a paginator if the sort order is random
