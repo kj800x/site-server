@@ -494,7 +494,7 @@ pub async fn serve_crawled_json(
     let workdir = get_workdir(&workdir)?;
     let json = serde_json::to_string(&workdir.crawled)
         .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
-    
+
     Ok(HttpResponse::Ok()
         .content_type("application/json")
         .body(json))
