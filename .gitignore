@@ -1,4 +1,3 @@
 /target
 data-*
 setup-mounts.sh
-test_load_workdir
