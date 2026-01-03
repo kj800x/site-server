@@ -486,3 +486,16 @@ pub async fn generic_detail_full_handler(
         &format!("/item-full/{}/{}", encode(&id), encode(&file_id)),
     )
 }
+
+#[get("/crawled.json")]
+pub async fn serve_crawled_json(
+    workdir: web::Data<ThreadSafeWorkDir>,
+) -> Result<impl Responder, actix_web::Error> {
+    let workdir = get_workdir(&workdir)?;
+    let json = serde_json::to_string(&workdir.crawled)
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+    
+    Ok(HttpResponse::Ok()
+        .content_type("application/json")
+        .body(json))
+}

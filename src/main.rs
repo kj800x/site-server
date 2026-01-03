@@ -24,7 +24,8 @@ use site_server::{
         generic_index_handler, generic_index_root_handler, generic_latest_handler,
         generic_latest_page_handler, generic_oldest_handler, generic_oldest_page_handler,
         generic_random_handler, generic_tag_handler, generic_tag_page_handler,
-        generic_tags_index_handler, media_viewer_fragment_handler, SiteRenderer,
+        generic_tags_index_handler, media_viewer_fragment_handler, serve_crawled_json,
+        SiteRenderer,
     },
     serve_static_file, thread_safe_work_dir, workdir,
 };
@@ -265,6 +266,7 @@ async fn run() -> errors::Result<()> {
                         web::scope(&slug)
                             .app_data(web::Data::new(workdir.clone()))
                             .app_data(web::Data::new(WorkDirPrefix(slug.clone())))
+                            .service(serve_crawled_json)
                             .service(
                                 // FIXME: Serving these files seems to exhaust the worker pool
                                 // and the server stops responding to requests. This aint good.
