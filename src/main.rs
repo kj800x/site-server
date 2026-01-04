@@ -69,13 +69,13 @@ async fn healthz(
 
 #[get("/")]
 async fn root_index_handler(
-    site: web::Data<Vec<ThreadSafeWorkDir>>,
+    sites: web::Data<Vec<ThreadSafeWorkDir>>,
     start_time: web::Data<StartTime>,
 ) -> Result<impl Responder, actix_web::Error> {
     use maud::html;
 
     // Create a vector of sites with their latest update times for sorting
-    let mut sites_with_updates: Vec<_> = site
+    let mut sites_with_updates: Vec<_> = sites
         .iter()
         .map(|site| {
             let site = site.work_dir.read().unwrap();
@@ -138,6 +138,19 @@ async fn root_index_handler(
             }
         }
     });
+}
+
+#[get("/sites.json")]
+async fn sites_json_handler(sites: web::Data<Vec<ThreadSafeWorkDir>>) -> impl Responder {
+    let sites = sites
+        .iter()
+        .map(|site| {
+            let site = site.work_dir.read().unwrap();
+            (site.config.slug.clone(), site.crawled.items.len())
+        })
+        .collect::<Vec<(String, usize)>>();
+
+    HttpResponse::Ok().body(serde_json::to_string(&sites).unwrap())
 }
 
 async fn run() -> errors::Result<()> {
@@ -225,7 +238,8 @@ async fn run() -> errors::Result<()> {
                     .service(serve_static_file!("idiomorph-ext.min.js"))
                     .service(serve_static_file!("htmx.min.js"))
                     .service(healthz)
-                    .service(root_index_handler);
+                    .service(root_index_handler)
+                    .service(sites_json_handler);
 
                 for workdir in work_dirs_vec.iter() {
                     let slug = workdir.work_dir.read().unwrap().config.slug.clone();
