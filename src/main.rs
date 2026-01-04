@@ -12,7 +12,7 @@ use chrono::Utc;
 use clap::Parser;
 use opentelemetry::global;
 use opentelemetry_sdk::metrics::MeterProvider;
-use site_server::bake::Bake;
+use site_server::{bake::Bake, tag_detection::TagDetect};
 use std::io::Read;
 use std::{thread, time::Duration};
 
@@ -48,6 +48,7 @@ struct StartTime(i64);
 enum Commands {
     Serve { work_dirs: Vec<String> },
     Bake { work_dirs: Vec<String> },
+    TagDetect { work_dir: String },
 }
 
 #[get("/healthz")]
@@ -173,6 +174,13 @@ async fn run() -> errors::Result<()> {
                 work_dir.bake_all();
             }
 
+            Ok(())
+        }
+
+        Commands::TagDetect { work_dir } => {
+            println!("Loading WorkDir: {}", work_dir);
+            let work_dir = WorkDir::new(work_dir.to_string()).expect("Failed to load WorkDir");
+            work_dir.tag_detect();
             Ok(())
         }
 

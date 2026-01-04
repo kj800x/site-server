@@ -52,5 +52,6 @@ pub mod errors;
 pub mod handlers;
 pub mod serde;
 pub mod site;
+pub mod tag_detection;
 pub mod thread_safe_work_dir;
 pub mod workdir;
