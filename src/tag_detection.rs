@@ -15,7 +15,60 @@ struct HardcodedStemmer {
 
 impl Stemmer for HardcodedStemmer {
     fn stem(&self, word: &str) -> Option<String> {
-        self.map.get(word).cloned()
+        let v: Vec<Box<dyn Fn() -> Option<String>>> = vec![
+            Box::new(|| Some(word.to_string())),
+            Box::new(|| {
+                if word.ends_with("s") {
+                    Some(word.trim_end_matches("s").to_string())
+                } else {
+                    None
+                }
+            }),
+            Box::new(|| {
+                if word.ends_with("re") {
+                    Some(word.trim_end_matches("re").to_string())
+                } else {
+                    None
+                }
+            }),
+            Box::new(|| {
+                if word.ends_with("nt") {
+                    Some(word.trim_end_matches("nt").to_string())
+                } else {
+                    None
+                }
+            }),
+            Box::new(|| {
+                if word.ends_with("ve") {
+                    Some(word.trim_end_matches("ve").to_string())
+                } else {
+                    None
+                }
+            }),
+            Box::new(|| {
+                if word.ends_with("d") {
+                    Some(word.trim_end_matches("d").to_string())
+                } else {
+                    None
+                }
+            }),
+            Box::new(|| {
+                if word.ends_with("ll") {
+                    Some(word.trim_end_matches("ll").to_string())
+                } else {
+                    None
+                }
+            }),
+        ];
+
+        for f in v {
+            let result = f().and_then(|r| self.map.get(&r).cloned());
+            if let Some(result) = result {
+                return Some(result);
+            }
+        }
+
+        None
     }
 }
 
@@ -218,7 +271,7 @@ impl TagDetect for WorkDir {
             let stem_tabs = if stem.len() < 6 { "\t\t" } else { "\t" };
 
             println!(
-                "{}{}| {}{}| {:.2}  \t| {:.2}  \t| {:?} \t| {:.2}  \t| {:.2}% \t| {}",
+                "{}{}| {}{}| {:.2}  \t| {:.2}  \t| {:?}{} \t| {:.2}  \t| {:.2}% \t| {}",
                 display_term,
                 tabs,
                 stem,
@@ -226,6 +279,7 @@ impl TagDetect for WorkDir {
                 score,
                 global_idf,
                 global_rank,
+                if let None = global_rank { "\t" } else { "" },
                 corp_idf,
                 doc_percent * 100.0,
                 occ_count
