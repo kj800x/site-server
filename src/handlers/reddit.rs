@@ -52,6 +52,25 @@ fn reddit_layout_full(title: &str, content: Markup, __site: &str, __route: &str)
     }
 }
 
+fn file_counts(item: &CrawlItem) -> Markup {
+    let image_count = item.flat_files().iter().filter(|x| x.1.is_image()).count();
+    let video_count = item.flat_files().iter().filter(|x| x.1.is_video()).count();
+
+    html! {
+        span.post_file_counts {
+            @if image_count > 0 {
+                (image_count) " P"
+            }
+            @if image_count > 0 && video_count > 0 {
+                ", "
+            }
+            @if video_count > 0 {
+                (video_count) " V"
+            }
+        }
+    }
+}
+
 fn reddit_post_card(
     item: &CrawlItem,
     site: &str,
@@ -80,6 +99,7 @@ fn reddit_post_card(
                     }
                 }
                 span.post_time { (timeago(item.source_published as u64)) }
+                (file_counts(item))
             }
 
             .post_content {
@@ -164,6 +184,24 @@ pub fn render_listing_page(
     reddit_layout(&title, content, &site, route)
 }
 
+fn get_file_index_info(item: &CrawlItem, current_file: &FileCrawlType) -> Option<(usize, usize)> {
+    let flat_files = item
+        .flat_files()
+        .into_iter()
+        .filter(|(_, file)| file.is_downloaded())
+        .collect::<IndexMap<String, FileCrawlType>>();
+
+    let total = flat_files.len();
+    if total == 0 {
+        return None;
+    }
+
+    let current_file_index_0based = flat_files.get_index_of(current_file.get_key())?;
+    let current_file_index_1based = current_file_index_0based + 1;
+
+    Some((current_file_index_1based, total))
+}
+
 pub fn post_file_paginator(
     item: &CrawlItem,
     site: &str,
@@ -213,8 +251,14 @@ pub fn post_file_paginator(
 }
 
 pub fn render_media_viewer(site: &str, item: &CrawlItem, file: &FileCrawlType) -> Markup {
+    let index_info = get_file_index_info(item, file);
     html!(
         .media_viewer {
+            @if let Some((current, total)) = index_info {
+                span.media_viewer_counter {
+                    (current) " / " (total)
+                }
+            }
             @match file {
                 FileCrawlType::Image { filename, downloaded, .. } => {
                     @if *downloaded {
@@ -268,8 +312,14 @@ pub async fn media_viewer_fragment_handler(
 }
 
 pub fn render_full_media_viewer(site: &str, item: &CrawlItem, file: &FileCrawlType) -> Markup {
+    let index_info = get_file_index_info(item, file);
     html!(
         .media_viewer {
+            @if let Some((current, total)) = index_info {
+                span.media_viewer_counter {
+                    (current) " / " (total)
+                }
+            }
             @match file {
                 FileCrawlType::Image { filename, downloaded, .. } => {
                     @if *downloaded {
@@ -326,6 +376,7 @@ pub fn render_detail_page(
                     }
                 }
                 span.post_time { (timeago(item.source_published as u64)) }
+                (file_counts(item))
             }
             h1.post_title { (item.title) }
             .post_content {
