@@ -9,6 +9,7 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    reprocessors::Reprocessor,
     serde::{deserialize_map_values, serialize_map_values},
     site::CrawlItem,
 };
@@ -21,6 +22,8 @@ pub struct Config {
     pub forced_author: Option<String>,
     #[serde(default)]
     pub hide_titles: bool,
+    #[serde(default)]
+    pub reprocessors: Vec<Reprocessor>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -128,6 +131,11 @@ impl WorkDir {
         crawled.remove_duplicate_tags();
         if std::env::var("ALLOW_NO_FILES").is_err() {
             crawled.remove_items_without_files();
+        }
+
+        // Apply reprocessors
+        for reprocessor in &config.reprocessors {
+            reprocessor.apply(&mut crawled.items);
         }
 
         let loaded_at = std::time::SystemTime::now()
