@@ -107,6 +107,7 @@ pub fn render_listing_page(
                 year
             )
         }
+        ListingPageMode::Search { query } => format!("Search: {}", query),
     };
 
     let content = html! {

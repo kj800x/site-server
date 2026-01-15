@@ -51,6 +51,7 @@ pub mod collections;
 pub mod errors;
 pub mod handlers;
 pub mod reprocessors;
+pub mod search;
 pub mod serde;
 pub mod site;
 pub mod thread_safe_work_dir;

@@ -87,9 +87,10 @@ impl Reprocessor {
                     for tag in item.tags.iter_mut() {
                         let tag_value = tag.to_string();
                         // Check if this tag should be mapped (case-insensitive)
-                        if let Some(mapped_value) = mappings.iter().find(|(k, _)| {
-                            k.to_lowercase() == tag_value.to_lowercase()
-                        }) {
+                        if let Some(mapped_value) = mappings
+                            .iter()
+                            .find(|(k, _)| k.to_lowercase() == tag_value.to_lowercase())
+                        {
                             *tag = CrawlTag::Simple(mapped_value.1.clone());
                         }
                     }
@@ -99,7 +100,9 @@ impl Reprocessor {
                 for item in items.values_mut() {
                     item.tags.retain(|tag| {
                         let tag_value = tag.to_string();
-                        !tags.iter().any(|t| t.to_lowercase() == tag_value.to_lowercase())
+                        !tags
+                            .iter()
+                            .any(|t| t.to_lowercase() == tag_value.to_lowercase())
                     });
                 }
             }
@@ -121,9 +124,8 @@ impl Reprocessor {
                 items.retain(|_, item| {
                     !item.tags.iter().any(|t| {
                         let tag_value = t.to_string().to_lowercase();
-                        tags.iter().any(|filter_tag| {
-                            filter_tag.to_lowercase() == tag_value
-                        })
+                        tags.iter()
+                            .any(|filter_tag| filter_tag.to_lowercase() == tag_value)
                     })
                 });
             }
@@ -131,7 +133,7 @@ impl Reprocessor {
     }
 }
 
-fn extract_text_from_formatted_text(ft: &FormattedText) -> String {
+pub fn extract_text_from_formatted_text(ft: &FormattedText) -> String {
     match ft {
         FormattedText::Markdown { value } => value.clone(),
         FormattedText::Plaintext { value } => value.clone(),
@@ -139,7 +141,7 @@ fn extract_text_from_formatted_text(ft: &FormattedText) -> String {
     }
 }
 
-fn search_json_value_recursive(value: &Value, search_text: &str) -> bool {
+pub fn search_json_value_recursive(value: &Value, search_text: &str) -> bool {
     let search_lower = search_text.to_lowercase();
 
     match value {

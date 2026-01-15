@@ -77,6 +77,7 @@ pub fn render_listing_page(
         ListingPageMode::All => String::new(),
         ListingPageMode::ByTag { tag } => format!("Items tagged \"{}\"", tag),
         ListingPageMode::ByMonth { year, month } => format!("Items from {}/{}", year, month),
+        ListingPageMode::Search { query } => format!("Search: {}", query),
     };
 
     let content = html! {

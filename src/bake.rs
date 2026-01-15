@@ -63,6 +63,10 @@ impl FileCrawlType {
     pub fn is_video(&self) -> bool {
         matches!(self, FileCrawlType::Video { .. })
     }
+
+    pub fn is_text(&self) -> bool {
+        matches!(self, FileCrawlType::Text { .. })
+    }
 }
 
 impl CrawlItem {

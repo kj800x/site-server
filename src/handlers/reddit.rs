@@ -163,6 +163,7 @@ pub fn render_listing_page(
                 format_year_month(*year as i32, *month as u8)
             )
         }
+        ListingPageMode::Search { query } => format!("Search: {}", query),
     };
 
     let content = html! {

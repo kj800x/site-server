@@ -54,6 +54,12 @@ fn resolve_listing_page(
             .map(|(_, item)| item)
             .cloned()
             .collect(),
+
+        ListingPageMode::Search { .. } => {
+            // Search mode is handled separately in search handlers
+            // This should not be called for search mode
+            vec![]
+        }
     }
 }
 

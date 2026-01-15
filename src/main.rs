@@ -24,8 +24,8 @@ use site_server::{
         generic_index_handler, generic_index_root_handler, generic_latest_handler,
         generic_latest_page_handler, generic_oldest_handler, generic_oldest_page_handler,
         generic_random_handler, generic_tag_handler, generic_tag_page_handler,
-        generic_tags_index_handler, media_viewer_fragment_handler, serve_crawled_json,
-        SiteRenderer,
+        generic_tags_index_handler, media_viewer_fragment_handler, search_form_handler,
+        search_results_handler, serve_crawled_json, SiteRenderer,
     },
     serve_static_file, thread_safe_work_dir, workdir,
 };
@@ -269,6 +269,8 @@ async fn run() -> errors::Result<()> {
                                 .service(generic_tag_handler)
                                 .service(generic_archive_page_handler)
                                 .service(generic_archive_index_handler)
+                                .service(search_form_handler)
+                                .service(search_results_handler)
                                 .service(generic_detail_handler)
                                 .service(generic_detail_redirect)
                                 .service(generic_detail_full_handler)

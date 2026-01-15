@@ -8,10 +8,12 @@ mod booru;
 mod common;
 mod generic;
 mod reddit;
+mod search;
 
 pub use common::*;
 pub use generic::*;
 pub use reddit::media_viewer_fragment_handler;
+pub use search::{search_form_handler, search_results_handler};
 
 use crate::site::{CrawlItem, FileCrawlType};
 
@@ -171,6 +173,9 @@ pub fn header(site_prefix: &str, rendering_prefix: &str, current_route: &str) ->
                 span .active[current_route.starts_with("/archive")] {
                     a href=(format!("/{}/{}/archive", site_prefix, rendering_prefix)) { "Archive"}
                 }
+                span .active[current_route.starts_with("/search")] {
+                    a href=(format!("/{}/{}/search", site_prefix, rendering_prefix)) { "Search"}
+                }
             }
         }
     }
@@ -222,6 +227,7 @@ pub enum ListingPageMode {
     All,
     ByTag { tag: String },
     ByMonth { year: u32, month: u32 },
+    Search { query: String },
 }
 
 pub enum ListingPageOrdering {
@@ -264,6 +270,9 @@ impl PaginatorPrefix for ListingPageConfig {
                     "/{}/{}/archive/{}/{}",
                     site_prefix, rendering_prefix, year, month
                 )
+            }
+            ListingPageMode::Search { query } => {
+                format!("/{}/{}/search/{}", site_prefix, rendering_prefix, query)
             }
         }
     }
