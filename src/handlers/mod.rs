@@ -37,6 +37,17 @@ impl maud::Render for Js {
         }
     }
 }
+
+pub struct Fa(pub &'static str);
+
+impl maud::Render for Fa {
+    fn render(&self) -> Markup {
+        html! {
+            i class=(format!("fa fa-solid fa-{}", self.0)) {}
+        }
+    }
+}
+
 pub trait ExtensionFix {
     fn as_mp4(&self) -> String;
 }
@@ -130,6 +141,7 @@ pub fn scripts() -> Markup {
     html! {
         (Css("/res/page-transitions.css"))
         (Css("/res/styles.css"))
+        (Css("https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.4.0/css/font-awesome.css"))
         script src="/res/htmx.min.js" {}
         script src="/res/detail_page.js" {}
         script src="/res/idiomorph.min.js" {}

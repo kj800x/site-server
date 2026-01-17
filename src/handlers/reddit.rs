@@ -6,7 +6,7 @@ use urlencoding::encode;
 
 use super::{ArchiveYear, ListingPageConfig, ListingPageMode, ListingPageOrdering, SiteSource};
 use crate::collections::GetKey;
-use crate::handlers::{format_year_month, timeago, ExtensionFix, PaginatorPrefix};
+use crate::handlers::{format_year_month, timeago, ExtensionFix, Fa, PaginatorPrefix};
 use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
 
 fn reddit_layout(title: &str, content: Markup, site: &str, route: &str) -> Markup {
@@ -57,13 +57,13 @@ fn file_counts(item: &CrawlItem) -> Markup {
     html! {
         span.post_file_counts {
             @if image_count > 0 {
-                (image_count) " P"
+                (image_count) " " (Fa("camera"))
             }
             @if image_count > 0 && video_count > 0 {
-                ", "
+                " "
             }
             @if video_count > 0 {
-                (video_count) " V"
+                (video_count) " " (Fa("video-camera"))
             }
         }
     }
