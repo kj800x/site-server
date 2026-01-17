@@ -861,9 +861,9 @@ dd {
     top: 20px;
     right: 20px;
     border-radius: 100%;
-    width: 60px;
-    height: 60px;
-    font-size: 30px;
+    width: 40px;
+    height: 40px;
+    font-size: 16px;
     text-decoration: none;
     display: flex;
     align-items: center;
@@ -1021,7 +1021,7 @@ dd {
   border-radius: 100%;
   width: 40px;
   height: 40px;
-  font-size: 30px;
+  font-size: 16px;
   text-decoration: none;
   display: flex;
   align-items: center;

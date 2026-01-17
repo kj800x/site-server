@@ -223,8 +223,10 @@ pub fn post_file_paginator(
                     // hx-target="closest .media_viewer"
                     // hx-swap="morph"
                 {
-                    "‹"
+                    (Fa("chevron-left"))
                 }
+            } @else {
+                span.prev { }
             }
             @if let Some(next_file) = next_file {
                 a.next
@@ -236,8 +238,10 @@ pub fn post_file_paginator(
                     // hx-target="closest .media_viewer"
                     // hx-swap="morph"
                 {
-                    "›"
+                    (Fa("chevron-right"))
                 }
+            } @else {
+                span.next { }
             }
         }
     }
@@ -272,7 +276,7 @@ pub fn render_media_viewer(site_prefix: &str, item: &CrawlItem, file: &FileCrawl
                                 source src=(format!("/{}/assets/{}", asset_site, coerced_filename)) {}
                             }
                             a.fullscreen_link data-replace-history href=(format!("/{}/r/item-full/{}/{}", site_prefix, encode(&item.key), encode(&file.get_key()))) {
-                                "⏶"
+                                (Fa("expand"))
                             }
                             (post_file_paginator(item, site_prefix, "item", &file))
                         }
@@ -340,7 +344,7 @@ pub fn render_full_media_viewer(
                 data-is-quit
                 data-replace-history
             {
-                "🗙"
+                (Fa("compress"))
             }
         }
     )

@@ -32,3 +32,19 @@
 *[data-is-next] {
     view-transition-name: slide-next;
 }
+*[data-is-prev] {
+  view-transition-name: slide-prev;
+}
+.media_viewer_counter {
+  view-transition-name: media-viewer-counter;
+}
+.fullscreen_link, .quit {
+  view-transition-name: fullscreen-link;
+}
+.post_image, .post_video {
+  view-transition-name: post-media;
+}
+.post_preview, .post_figure {
+  /* FIXME: not sure if this one is actually doing anything. Was trying to make the transition between the listing and the details page smoother. */
+  view-transition-name: post-preview;
+}
