@@ -6,7 +6,13 @@
 
 use crate::reprocessors::{extract_text_from_formatted_text, search_json_value_recursive};
 use crate::site::{CrawlItem, FileCrawlType};
-use chrono::DateTime;
+use crate::timestring;
+use chrono::Utc;
+use chrono_tz::America::New_York;
+use chrono_tz::Tz;
+
+/// The timezone used for interpreting time strings in search queries.
+const SEARCH_TIMEZONE: Tz = New_York;
 
 #[derive(Debug, Clone)]
 pub enum SearchExpr {
@@ -21,8 +27,9 @@ pub enum SearchExpr {
     Meta(String),
     Desc(String),
     Url(String),
-    After(String),  // ISO8601 timestamp
-    Before(String), // ISO8601 timestamp
+    After(String),  // Flexible time string
+    Before(String), // Flexible time string
+    During(String), // Flexible time string (must be a range)
 }
 
 #[derive(Debug, Clone)]
@@ -204,7 +211,7 @@ fn parse_expr(tokens: &[Token], start: usize) -> Result<(SearchExpr, usize), Par
                     Ok((SearchExpr::Not(Box::new(expr)), pos))
                 }
                 "tag" | "type" | "site" | "fulltext" | "title" | "meta" | "desc" | "url"
-                | "after" | "before" => {
+                | "after" | "before" | "during" => {
                     if pos >= tokens.len() {
                         return Err(ParseError::UnexpectedEnd);
                     }
@@ -255,18 +262,36 @@ fn parse_expr(tokens: &[Token], start: usize) -> Result<(SearchExpr, usize), Par
                         "desc" => SearchExpr::Desc(arg),
                         "url" => SearchExpr::Url(arg),
                         "after" => {
-                            // Validate ISO8601 timestamp
-                            if DateTime::parse_from_rfc3339(&arg).is_err() {
+                            // Validate the time string can be parsed
+                            let now = Utc::now().with_timezone(&SEARCH_TIMEZONE);
+                            if timestring::parse(&arg, now, SEARCH_TIMEZONE).is_err() {
                                 return Err(ParseError::InvalidTimestamp(arg));
                             }
                             SearchExpr::After(arg)
                         }
                         "before" => {
-                            // Validate ISO8601 timestamp
-                            if DateTime::parse_from_rfc3339(&arg).is_err() {
+                            // Validate the time string can be parsed
+                            let now = Utc::now().with_timezone(&SEARCH_TIMEZONE);
+                            if timestring::parse(&arg, now, SEARCH_TIMEZONE).is_err() {
                                 return Err(ParseError::InvalidTimestamp(arg));
                             }
                             SearchExpr::Before(arg)
+                        }
+                        "during" => {
+                            // Validate the time string can be parsed AND is a range
+                            let now = Utc::now().with_timezone(&SEARCH_TIMEZONE);
+                            match timestring::parse(&arg, now, SEARCH_TIMEZONE) {
+                                Ok(spec) if spec.is_range() => SearchExpr::During(arg),
+                                Ok(_) => {
+                                    return Err(ParseError::InvalidArgument(format!(
+                                        "during requires a time range, not a specific moment: {}",
+                                        arg
+                                    )));
+                                }
+                                Err(_) => {
+                                    return Err(ParseError::InvalidTimestamp(arg));
+                                }
+                            }
                         }
                         _ => unreachable!(),
                     };
@@ -355,17 +380,25 @@ pub fn evaluate_search_expr(expr: &SearchExpr, item: &CrawlItem) -> bool {
             .url
             .to_lowercase()
             .contains(&search_text.to_lowercase()),
-        SearchExpr::After(timestamp_str) => {
-            let dt = DateTime::parse_from_rfc3339(timestamp_str)
-                .expect("Timestamp should be validated during parsing");
-            let timestamp_ms = dt.timestamp_millis();
-            item.source_published >= timestamp_ms
+        SearchExpr::After(time_str) => {
+            let now = Utc::now().with_timezone(&SEARCH_TIMEZONE);
+            let spec = timestring::parse(time_str, now, SEARCH_TIMEZONE)
+                .expect("Time string should be validated during parsing");
+            let threshold = spec.for_after();
+            item.source_published >= threshold
         }
-        SearchExpr::Before(timestamp_str) => {
-            let dt = DateTime::parse_from_rfc3339(timestamp_str)
-                .expect("Timestamp should be validated during parsing");
-            let timestamp_ms = dt.timestamp_millis();
-            item.source_published <= timestamp_ms
+        SearchExpr::Before(time_str) => {
+            let now = Utc::now().with_timezone(&SEARCH_TIMEZONE);
+            let spec = timestring::parse(time_str, now, SEARCH_TIMEZONE)
+                .expect("Time string should be validated during parsing");
+            let threshold = spec.for_before();
+            item.source_published <= threshold
+        }
+        SearchExpr::During(time_str) => {
+            let now = Utc::now().with_timezone(&SEARCH_TIMEZONE);
+            let spec = timestring::parse(time_str, now, SEARCH_TIMEZONE)
+                .expect("Time string should be validated during parsing");
+            spec.contains(item.source_published)
         }
     }
 }

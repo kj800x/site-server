@@ -76,16 +76,29 @@ pub async fn search_form_handler(
                                         li { code { "meta" } " - substring match in any meta value (case-insensitive)" }
                                         li { code { "desc" } " - substring match in description (case-insensitive)" }
                                         li { code { "url" } " - substring match in source URL (case-insensitive)" }
-                                        li { code { "after" } " - items published after ISO8601 timestamp" }
-                                        li { code { "before" } " - items published before ISO8601 timestamp" }
+                                        li { code { "after" } " - items published after the given time" }
+                                        li { code { "before" } " - items published before the given time" }
+                                        li { code { "during" } " - items published during the given time range" }
                                     }
+                                    h3 { "Time Formats (for after/before/during)" }
+                                    ul {
+                                        li { "Relative: " code { "\"2 weeks ago\"" } ", " code { "\"1 year ago\"" } ", " code { "\"a month ago\"" } }
+                                        li { "Named: " code { "\"last month\"" } ", " code { "\"this year\"" } ", " code { "\"yesterday\"" } ", " code { "\"today\"" } }
+                                        li { "Month: " code { "\"January\"" } " or " code { "\"Jan\"" } " (most recent)" }
+                                        li { "Year: " code { "\"2025\"" } }
+                                        li { "Date: " code { "\"Jan 15, 2025\"" } ", " code { "\"1/15/2025\"" } ", " code { "\"2025-01-15\"" } }
+                                        li { "ISO8601: " code { "\"2024-01-01T00:00:00Z\"" } }
+                                        li { "Unix ms: " code { "\"1704067200000\"" } }
+                                    }
+                                    p.timezone-note { "Times default to US Eastern timezone." }
                                     h3 { "Examples" }
                                     ul {
                                         li { code { "(tag \"foobar\")" } }
-                                        li { code { "(and (tag \"foobar\") (type \"image\") (not (type \"video\")))" } }
-                                        li { code { "(or (title \"example\") (fulltext \"search term\"))" } }
-                                        li { code { "(after \"2024-01-01T00:00:00Z\")" } }
-                                        li { code { "(and (site \"r-aww\") (tag \"cute\"))" } }
+                                        li { code { "(and (tag \"cute\") (type \"image\"))" } }
+                                        li { code { "(after \"2 weeks ago\")" } }
+                                        li { code { "(during \"last month\")" } }
+                                        li { code { "(during \"January\")" } }
+                                        li { code { "(and (site \"r-aww\") (during \"2024\"))" } }
                                     }
                                 }
                             }
