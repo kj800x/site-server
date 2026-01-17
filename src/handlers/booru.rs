@@ -1,11 +1,9 @@
 use maud::{html, Markup};
 use std::collections::HashMap;
-use std::path::PathBuf;
 use urlencoding::encode;
 
 use crate::handlers::{ExtensionFix, PaginatorPrefix};
 use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
-use crate::thread_safe_work_dir::ThreadSafeWorkDir;
 
 use super::{ArchiveYear, ListingPageConfig, ListingPageMode};
 
@@ -35,17 +33,20 @@ fn booru_layout(title: &str, content: Markup, site: &str, route: &str) -> Markup
     }
 }
 
-fn item_thumbnail(item: &CrawlItem, site: &str, work_dir_path: &PathBuf) -> Markup {
+fn item_thumbnail(item: &CrawlItem, site_prefix: &str) -> Markup {
+    // Use item's source site for asset paths
+    let asset_site = &item.site_settings.site_slug;
+
     html! {
-        a.item_thumb_container href=(format!("/{}/booru/item/{}", site, encode(&item.key))) {
+        a.item_thumb_container href=(format!("/{}/booru/item/{}", site_prefix, encode(&item.key))) {
             .item_thumb_img {
-                @if let Some(thumb) = item.thumbnail_path(work_dir_path) {
+                @if let Some(thumb) = item.thumbnail_path() {
                     @if thumb.ends_with(".mp4") {
                         video.thumbnail_preview autoplay loop muted playsinline {
-                            source src=(format!("/{}/assets/{}", site, thumb)) {}
+                            source src=(format!("/{}/assets/{}", asset_site, thumb)) {}
                         }
                     } @else {
-                        img src=(format!("/{}/assets/{}", site, thumb)) alt=(item.title) {}
+                        img src=(format!("/{}/assets/{}", asset_site, thumb)) alt=(item.title) {}
                     }
                 } @else {
                     p.no_thumbnail { "No thumbnail" }
@@ -64,15 +65,11 @@ fn item_thumbnail(item: &CrawlItem, site: &str, work_dir_path: &PathBuf) -> Mark
 }
 
 pub fn render_listing_page(
-    work_dir: &ThreadSafeWorkDir,
+    site_prefix: &str,
     config: ListingPageConfig,
     items: &[CrawlItem],
     route: &str,
 ) -> Markup {
-    let workdir = work_dir.work_dir.read().unwrap();
-    let site = workdir.config.slug.clone();
-    let work_dir_path = PathBuf::from(workdir.path.clone());
-
     let title = match &config.mode {
         ListingPageMode::All => String::new(),
         ListingPageMode::ByTag { tag } => format!("Items tagged \"{}\"", tag),
@@ -81,26 +78,26 @@ pub fn render_listing_page(
     };
 
     let content = html! {
-        ( super::paginator(config.page, config.total, config.per_page, &config.paginator_prefix(&site, "booru")) )
+        ( super::paginator(config.page, config.total, config.per_page, &config.paginator_prefix(site_prefix, "booru")) )
         .item_thumb_grid {
             @for item in items {
-                ( item_thumbnail(item, &site, &work_dir_path) )
+                ( item_thumbnail(item, site_prefix) )
             }
         }
-        ( super::paginator(config.page, config.total, config.per_page, &config.paginator_prefix(&site, "booru")) )
+        ( super::paginator(config.page, config.total, config.per_page, &config.paginator_prefix(site_prefix, "booru")) )
     };
 
-    booru_layout(&title, content, &site, route)
+    booru_layout(&title, content, site_prefix, route)
 }
 
 pub fn render_detail_page(
-    work_dir: &ThreadSafeWorkDir,
+    site_prefix: &str,
     item: &CrawlItem,
     file: &FileCrawlType,
     route: &str,
 ) -> Markup {
-    let workdir = work_dir.work_dir.read().unwrap();
-    let site = workdir.config.slug.clone();
+    // Use item's source site for asset paths
+    let asset_site = &item.site_settings.site_slug;
 
     let content = html! {
         article.post {
@@ -110,7 +107,7 @@ pub fn render_detail_page(
                     FileCrawlType::Image { filename, downloaded, .. } => {
                         @if *downloaded {
                             figure.post_figure {
-                                img.post_image src=(format!("/{}/assets/{}", site, filename)) alt=(item.title) {}
+                                img.post_image src=(format!("/{}/assets/{}", asset_site, filename)) alt=(item.title) {}
                             }
                         }
                     }
@@ -119,7 +116,7 @@ pub fn render_detail_page(
                             @let coerced_filename = filename.as_mp4();
                             figure.post_figure {
                                 video.post_video controls autoplay {
-                                    source src=(format!("/{}/assets/{}", site, coerced_filename)) {}
+                                    source src=(format!("/{}/assets/{}", asset_site, coerced_filename)) {}
                                 }
                             }
                         }
@@ -147,9 +144,9 @@ pub fn render_detail_page(
                     @for tag in &item.tags {
                         @match tag {
                             CrawlTag::Simple(x) =>
-                                a.post_tag href=(format!("/{}/booru/tag/{}", site, encode(x))) { (x) },
+                                a.post_tag href=(format!("/{}/booru/tag/{}", site_prefix, encode(x))) { (x) },
                             CrawlTag::Detailed { value, .. } =>
-                                a.post_tag href=(format!("/{}/booru/tag/{}", site, encode(value))) { (value) },
+                                a.post_tag href=(format!("/{}/booru/tag/{}", site_prefix, encode(value))) { (value) },
                         }
                     }
                 }
@@ -161,25 +158,22 @@ pub fn render_detail_page(
         }
     };
 
-    booru_layout(&item.title, content, &site, route)
+    booru_layout(&item.title, content, site_prefix, route)
 }
 
 pub fn render_tags_page(
-    work_dir: &ThreadSafeWorkDir,
+    site_prefix: &str,
     tags: &HashMap<String, usize>,
     tag_order: &Vec<String>,
     route: &str,
 ) -> Markup {
-    let workdir = work_dir.work_dir.read().unwrap();
-    let site = workdir.config.slug.clone();
-
     let content = html! {
         .tag_list_page {
             h2 { "Tags" }
             ul.tag_list {
                 @for tag in tag_order {
                     li.tag_item {
-                        a href=(format!("/{}/booru/tag/{}", site, encode(tag))) {
+                        a href=(format!("/{}/booru/tag/{}", site_prefix, encode(tag))) {
                             span.tag_name { (tag) }
                             span.tag_count { " (" (tags.get(tag).unwrap_or(&0)) ")" }
                         }
@@ -189,17 +183,10 @@ pub fn render_tags_page(
         }
     };
 
-    booru_layout("Tags", content, &site, route)
+    booru_layout("Tags", content, site_prefix, route)
 }
 
-pub fn render_archive_page(
-    work_dir: &ThreadSafeWorkDir,
-    archive: &Vec<ArchiveYear>,
-    route: &str,
-) -> Markup {
-    let workdir = work_dir.work_dir.read().unwrap();
-    let site = workdir.config.slug.clone();
-
+pub fn render_archive_page(site_prefix: &str, archive: &Vec<ArchiveYear>, route: &str) -> Markup {
     let archive_months = archive
         .iter()
         .map(|year| year.months.iter())
@@ -212,7 +199,7 @@ pub fn render_archive_page(
             ul.archive_list {
                 @for month in archive_months {
                     li.archive_item {
-                        a href=(format!("/{}/booru/archive/{}/{:02}", site, month.year, month.month)) {
+                        a href=(format!("/{}/booru/archive/{}/{:02}", site_prefix, month.year, month.month)) {
                             span.archive_date { (format!("{}/{:02}", month.year, month.month)) }
                             span.archive_count { " (" (month.count) ")" }
                         }
@@ -222,5 +209,5 @@ pub fn render_archive_page(
         }
     };
 
-    booru_layout("Archive", content, &site, route)
+    booru_layout("Archive", content, site_prefix, route)
 }

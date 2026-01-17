@@ -14,45 +14,28 @@ use crate::{
 };
 
 use super::{
-    get_workdir, ListingPageConfig, ListingPageMode, ListingPageOrdering, SiteRenderer,
-    SiteRendererType, ThreadSafeWorkDir,
+    ListingPageConfig, ListingPageMode, ListingPageOrdering, SiteRenderer, SiteRendererType,
+    SiteSource,
 };
 
-fn resolve_listing_page(
-    workdir: &web::Data<ThreadSafeWorkDir>,
-    mode: &ListingPageMode,
-) -> Vec<CrawlItem> {
-    let workdir = get_workdir(workdir).unwrap();
+fn resolve_listing_page(site_source: &SiteSource, mode: &ListingPageMode) -> Vec<CrawlItem> {
+    let items = site_source.all_items();
 
     match mode {
-        ListingPageMode::All => workdir
-            .crawled
-            .clone()
-            .iter()
-            .map(|(_, item)| item)
-            .cloned()
+        ListingPageMode::All => items,
+
+        ListingPageMode::ByTag { tag } => items
+            .into_iter()
+            .filter(|item| item.tags.iter().map(|t| t.to_string()).any(|t| t == *tag))
             .collect(),
 
-        ListingPageMode::ByTag { tag } => workdir
-            .crawled
-            .clone()
-            .iter()
-            .filter(|(_, item)| item.tags.iter().map(|t| t.to_string()).any(|t| t == *tag))
-            .map(|(_, item)| item)
-            .cloned()
-            .collect(),
-
-        ListingPageMode::ByMonth { year, month } => workdir
-            .crawled
-            .clone()
-            .iter()
-            .filter(|(_, item)| {
+        ListingPageMode::ByMonth { year, month } => items
+            .into_iter()
+            .filter(|item| {
                 let date = item.source_published;
                 let date = DateTime::from_timestamp_millis(date).unwrap();
                 date.year() as u32 == *year && date.month() as u32 == *month
             })
-            .map(|(_, item)| item)
-            .cloned()
             .collect(),
 
         ListingPageMode::Search { .. } => {
@@ -108,10 +91,11 @@ pub async fn generic_index_root_handler(
 #[get("/random")]
 pub async fn generic_random_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    site_source: web::Data<SiteSource>,
 ) -> impl Responder {
     let renderer = renderer.into_inner();
-    let items = resolve_listing_page(&workdir, &ListingPageMode::All);
+    let site_prefix = site_source.slug();
+    let items = resolve_listing_page(&site_source, &ListingPageMode::All);
     let config = ListingPageConfig {
         mode: ListingPageMode::All,
         ordering: ListingPageOrdering::Random,
@@ -121,16 +105,17 @@ pub async fn generic_random_handler(
     };
     let items = apply_selection(&items, &config);
 
-    renderer.render_listing_page(&workdir, config, &items, &format!("/random"))
+    renderer.render_listing_page(&site_prefix, config, &items, &format!("/random"))
 }
 
 #[get("/latest")]
 pub async fn generic_latest_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    site_source: web::Data<SiteSource>,
 ) -> impl Responder {
     let renderer = renderer.into_inner();
-    let items = resolve_listing_page(&workdir, &ListingPageMode::All);
+    let site_prefix = site_source.slug();
+    let items = resolve_listing_page(&site_source, &ListingPageMode::All);
     let config = ListingPageConfig {
         mode: ListingPageMode::All,
         ordering: ListingPageOrdering::NewestFirst,
@@ -140,17 +125,18 @@ pub async fn generic_latest_handler(
     };
     let items = apply_selection(&items, &config);
 
-    renderer.render_listing_page(&workdir, config, &items, &format!("/latest"))
+    renderer.render_listing_page(&site_prefix, config, &items, &format!("/latest"))
 }
 
 #[get("/latest/{page}")]
 pub async fn generic_latest_page_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    site_source: web::Data<SiteSource>,
     page: web::Path<usize>,
 ) -> impl Responder {
     let renderer = renderer.into_inner();
-    let items = resolve_listing_page(&workdir, &ListingPageMode::All);
+    let site_prefix = site_source.slug();
+    let items = resolve_listing_page(&site_source, &ListingPageMode::All);
     let config = ListingPageConfig {
         mode: ListingPageMode::All,
         ordering: ListingPageOrdering::NewestFirst,
@@ -160,16 +146,17 @@ pub async fn generic_latest_page_handler(
     };
     let items = apply_selection(&items, &config);
 
-    renderer.render_listing_page(&workdir, config, &items, &format!("/latest/{page}"))
+    renderer.render_listing_page(&site_prefix, config, &items, &format!("/latest/{page}"))
 }
 
 #[get("/oldest")]
 pub async fn generic_oldest_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    site_source: web::Data<SiteSource>,
 ) -> impl Responder {
     let renderer = renderer.into_inner();
-    let items = resolve_listing_page(&workdir, &ListingPageMode::All);
+    let site_prefix = site_source.slug();
+    let items = resolve_listing_page(&site_source, &ListingPageMode::All);
     let config = ListingPageConfig {
         mode: ListingPageMode::All,
         ordering: ListingPageOrdering::OldestFirst,
@@ -179,17 +166,18 @@ pub async fn generic_oldest_handler(
     };
     let items = apply_selection(&items, &config);
 
-    renderer.render_listing_page(&workdir, config, &items, &format!("/oldest"))
+    renderer.render_listing_page(&site_prefix, config, &items, &format!("/oldest"))
 }
 
 #[get("/oldest/{page}")]
 pub async fn generic_oldest_page_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    site_source: web::Data<SiteSource>,
     page: web::Path<usize>,
 ) -> impl Responder {
     let renderer = renderer.into_inner();
-    let items = resolve_listing_page(&workdir, &ListingPageMode::All);
+    let site_prefix = site_source.slug();
+    let items = resolve_listing_page(&site_source, &ListingPageMode::All);
     let config = ListingPageConfig {
         mode: ListingPageMode::All,
         ordering: ListingPageOrdering::OldestFirst,
@@ -199,7 +187,7 @@ pub async fn generic_oldest_page_handler(
     };
     let items = apply_selection(&items, &config);
 
-    renderer.render_listing_page(&workdir, config, &items, &format!("/oldest/{page}"))
+    renderer.render_listing_page(&site_prefix, config, &items, &format!("/oldest/{page}"))
 }
 
 #[derive(Deserialize)]
@@ -215,10 +203,11 @@ pub enum TagSort {
 #[get("/tags")]
 pub async fn generic_tags_index_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    site_source: web::Data<SiteSource>,
     query: web::Query<TagParam>,
 ) -> impl Responder {
     let renderer = renderer.into_inner();
+    let site_prefix = site_source.slug();
 
     let sort = match &query.sort {
         Some(sort) => match sort.as_str() {
@@ -230,10 +219,9 @@ pub async fn generic_tags_index_handler(
     };
 
     let tags = {
-        let workdir = get_workdir(&workdir).unwrap();
-
+        let items = site_source.all_items();
         let mut tags: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-        for item in workdir.crawled.items.values() {
+        for item in items {
             for tag in &item.tags {
                 let tag = match tag {
                     CrawlTag::Simple(x) => x,
@@ -258,16 +246,17 @@ pub async fn generic_tags_index_handler(
         tag_names
     };
 
-    renderer.render_tags_page(&workdir, &tags, &tag_order, &format!("/tags"))
+    renderer.render_tags_page(&site_prefix, &tags, &tag_order, &format!("/tags"))
 }
 #[get("/tag/{tag}")]
 pub async fn generic_tag_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    site_source: web::Data<SiteSource>,
     tag: web::Path<String>,
 ) -> impl Responder {
     let renderer = renderer.into_inner();
-    let items = resolve_listing_page(&workdir, &ListingPageMode::ByTag { tag: tag.clone() });
+    let site_prefix = site_source.slug();
+    let items = resolve_listing_page(&site_source, &ListingPageMode::ByTag { tag: tag.clone() });
     let config = ListingPageConfig {
         mode: ListingPageMode::ByTag { tag: tag.clone() },
         ordering: ListingPageOrdering::NewestFirst,
@@ -277,18 +266,19 @@ pub async fn generic_tag_handler(
     };
     let items = apply_selection(&items, &config);
 
-    renderer.render_listing_page(&workdir, config, &items, &format!("/tag/{tag}"))
+    renderer.render_listing_page(&site_prefix, config, &items, &format!("/tag/{tag}"))
 }
 
 #[get("/tag/{tag}/{page}")]
 pub async fn generic_tag_page_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    site_source: web::Data<SiteSource>,
     path: web::Path<(String, usize)>,
 ) -> impl Responder {
     let renderer = renderer.into_inner();
+    let site_prefix = site_source.slug();
     let items = resolve_listing_page(
-        &workdir,
+        &site_source,
         &ListingPageMode::ByTag {
             tag: path.0.clone(),
         },
@@ -305,7 +295,7 @@ pub async fn generic_tag_page_handler(
     let items = apply_selection(&items, &config);
 
     renderer.render_listing_page(
-        &workdir,
+        &site_prefix,
         config,
         &items,
         &format!("/tag/{}/{}", path.0, path.1),
@@ -328,14 +318,15 @@ pub struct ArchiveYear {
 #[get("/archive")]
 pub async fn generic_archive_index_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    site_source: web::Data<SiteSource>,
 ) -> impl Responder {
     let renderer = renderer.into_inner();
+    let site_prefix = site_source.slug();
     let archive = {
-        let workdir = get_workdir(&workdir).unwrap();
+        let items = site_source.all_items();
         let mut archive: HashMap<(i32, u8), usize> = HashMap::new();
 
-        for item in workdir.crawled.items.values() {
+        for item in items {
             let time = Utc
                 .timestamp_millis_opt(item.source_published as i64)
                 .unwrap();
@@ -368,18 +359,19 @@ pub async fn generic_archive_index_handler(
         .collect();
     archive_years.sort_by_key(|item| -item.year);
 
-    renderer.render_archive_page(&workdir, &archive_years, &format!("/archive"))
+    renderer.render_archive_page(&site_prefix, &archive_years, &format!("/archive"))
 }
 
 #[get("/archive/{year}/{month}")]
 pub async fn generic_archive_page_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    site_source: web::Data<SiteSource>,
     page: web::Path<(usize, usize)>,
 ) -> impl Responder {
     let renderer = renderer.into_inner();
+    let site_prefix = site_source.slug();
     let items = resolve_listing_page(
-        &workdir,
+        &site_source,
         &ListingPageMode::ByMonth {
             year: page.0 as u32,
             month: page.1 as u32,
@@ -398,7 +390,7 @@ pub async fn generic_archive_page_handler(
     let items = apply_selection(&items, &config);
 
     renderer.render_listing_page(
-        &workdir,
+        &site_prefix,
         config,
         &items,
         &format!("/archive/{}/{}", page.0, page.1),
@@ -408,17 +400,13 @@ pub async fn generic_archive_page_handler(
 #[get("/item/{id}")]
 pub async fn generic_detail_redirect(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    site_source: web::Data<SiteSource>,
     path: web::Path<String>,
-    workdir_prefix: web::Data<WorkDirPrefix>,
 ) -> impl Responder {
     let id = path.into_inner();
     let renderer = renderer.into_inner();
-    let item = {
-        let workdir = get_workdir(&workdir).unwrap();
-        let item = workdir.crawled.get(&id).unwrap().clone();
-        item
-    };
+    let site_prefix = site_source.slug();
+    let item = site_source.get_item(&id).unwrap();
 
     let file_id = {
         item.flat_files()
@@ -436,7 +424,7 @@ pub async fn generic_detail_redirect(
             "Location",
             format!(
                 "/{}/{}/item/{}/{}",
-                workdir_prefix.0,
+                site_prefix,
                 renderer.get_prefix(),
                 encode(&id),
                 encode(&file_id)
@@ -448,21 +436,18 @@ pub async fn generic_detail_redirect(
 #[get("/item/{id}/{file_id}")]
 pub async fn generic_detail_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    site_source: web::Data<SiteSource>,
     path: web::Path<(String, String)>,
 ) -> impl Responder {
     let (id, file_id) = path.into_inner();
     let renderer = renderer.into_inner();
-    let item = {
-        let workdir = get_workdir(&workdir).unwrap();
-        let item = workdir.crawled.get(&id).unwrap().clone();
-        item
-    };
+    let site_prefix = site_source.slug();
+    let item = site_source.get_item(&id).unwrap();
 
     let file = { item.flat_files().get(&file_id).unwrap().clone() };
 
     renderer.render_detail_page(
-        &workdir,
+        &site_prefix,
         &item,
         &file,
         &format!("/item/{}/{}", encode(&id), encode(&file_id)),
@@ -472,21 +457,18 @@ pub async fn generic_detail_handler(
 #[get("/item-full/{id}/{file_id}")]
 pub async fn generic_detail_full_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
+    site_source: web::Data<SiteSource>,
     path: web::Path<(String, String)>,
 ) -> impl Responder {
     let (id, file_id) = path.into_inner();
     let renderer = renderer.into_inner();
-    let item = {
-        let workdir = get_workdir(&workdir).unwrap();
-        let item = workdir.crawled.get(&id).unwrap().clone();
-        item
-    };
+    let site_prefix = site_source.slug();
+    let item = site_source.get_item(&id).unwrap();
 
     let file = { item.flat_files().get(&file_id).unwrap().clone() };
 
     renderer.render_detail_full_page(
-        &workdir,
+        &site_prefix,
         &item,
         &file,
         &format!("/item-full/{}/{}", encode(&id), encode(&file_id)),
@@ -495,10 +477,9 @@ pub async fn generic_detail_full_handler(
 
 #[get("/crawled.json")]
 pub async fn serve_crawled_json(
-    workdir: web::Data<ThreadSafeWorkDir>,
+    site_source: web::Data<SiteSource>,
 ) -> Result<impl Responder, actix_web::Error> {
-    let workdir = get_workdir(&workdir)?;
-    let json = serde_json::to_string(&workdir.crawled)
+    let json = serde_json::to_string(&site_source.all_items())
         .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
     Ok(HttpResponse::Ok()

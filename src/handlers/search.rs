@@ -4,8 +4,8 @@ use serde::Deserialize;
 use urlencoding::{decode, encode};
 
 use crate::handlers::{
-    get_workdir, header, scripts, ListingPageConfig, ListingPageMode, ListingPageOrdering,
-    SiteRenderer, SiteRendererType, ThreadSafeWorkDir, WorkDirPrefix,
+    header, scripts, ListingPageConfig, ListingPageMode, ListingPageOrdering, SiteRenderer,
+    SiteRendererType, SiteSource,
 };
 use crate::search::{evaluate_search_expr, parse_search_expr};
 use crate::site::CrawlItem;
@@ -18,12 +18,11 @@ pub struct SearchQuery {
 #[get("/search")]
 pub async fn search_form_handler(
     renderer: web::Data<SiteRendererType>,
-    _workdir: web::Data<ThreadSafeWorkDir>,
-    workdir_prefix: web::Data<WorkDirPrefix>,
+    site_source: web::Data<SiteSource>,
     query: web::Query<SearchQuery>,
 ) -> impl Responder {
     let renderer = renderer.into_inner();
-    let site_prefix = workdir_prefix.0.clone();
+    let site_prefix = site_source.slug();
     let rendering_prefix = renderer.get_prefix();
 
     // If query parameter is provided, redirect to results page
@@ -101,13 +100,12 @@ pub async fn search_form_handler(
 #[get("/search/{query}/{page}")]
 pub async fn search_results_handler(
     renderer: web::Data<SiteRendererType>,
-    workdir: web::Data<ThreadSafeWorkDir>,
-    workdir_prefix: web::Data<WorkDirPrefix>,
+    site_source: web::Data<SiteSource>,
     path: web::Path<(String, usize)>,
 ) -> impl Responder {
     let (encoded_query, page) = path.into_inner();
     let renderer = renderer.into_inner();
-    let site_prefix = workdir_prefix.0.clone();
+    let site_prefix = site_source.slug();
     let rendering_prefix = renderer.get_prefix();
 
     // Decode the query
@@ -135,25 +133,7 @@ pub async fn search_results_handler(
     };
 
     // Get all items and filter
-    let all_items: Vec<CrawlItem> = {
-        let workdir_read = match get_workdir(&workdir) {
-            Ok(wd) => wd,
-            Err(e) => {
-                return error_page(
-                    &site_prefix,
-                    &rendering_prefix,
-                    &format!("Error accessing work directory: {}", e),
-                );
-            }
-        };
-
-        workdir_read
-            .crawled
-            .iter()
-            .map(|(_, item)| item)
-            .cloned()
-            .collect()
-    };
+    let all_items: Vec<CrawlItem> = site_source.all_items();
 
     let filtered_items: Vec<CrawlItem> = all_items
         .into_iter()
@@ -193,7 +173,7 @@ pub async fn search_results_handler(
 
     // Render the results using the existing renderer
     let route = format!("/search/{}/{}", encoded_query, page);
-    let rendered = renderer.render_listing_page(&workdir, config, &paginated_items, &route);
+    let rendered = renderer.render_listing_page(&site_prefix, config, &paginated_items, &route);
 
     HttpResponse::Ok().body(rendered.0)
 }

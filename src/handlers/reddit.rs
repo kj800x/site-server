@@ -2,14 +2,12 @@ use actix_web::{get, web, Responder};
 use indexmap::IndexMap;
 use maud::{html, Markup};
 use std::collections::HashMap;
-use std::path::PathBuf;
 use urlencoding::encode;
 
-use super::{get_workdir, ArchiveYear, ListingPageConfig, ListingPageMode, ListingPageOrdering};
+use super::{ArchiveYear, ListingPageConfig, ListingPageMode, ListingPageOrdering, SiteSource};
 use crate::collections::GetKey;
 use crate::handlers::{format_year_month, timeago, ExtensionFix, PaginatorPrefix};
 use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
-use crate::thread_safe_work_dir::ThreadSafeWorkDir;
 
 fn reddit_layout(title: &str, content: Markup, site: &str, route: &str) -> Markup {
     html! {
@@ -71,14 +69,14 @@ fn file_counts(item: &CrawlItem) -> Markup {
     }
 }
 
-fn reddit_post_card(
-    item: &CrawlItem,
-    site: &str,
-    forced_author: &Option<String>,
-    work_dir_path: &PathBuf,
-    hide_titles: bool,
-) -> Markup {
-    let post_href = format!("/{}/r/item/{}", site, encode(&item.key));
+fn reddit_post_card(item: &CrawlItem, site_prefix: &str) -> Markup {
+    // Read display settings from item.site_settings
+    let forced_author = &item.site_settings.forced_author;
+    let hide_titles = item.site_settings.hide_titles;
+    // Use item's source site for asset paths
+    let asset_site = &item.site_settings.site_slug;
+
+    let post_href = format!("/{}/r/item/{}", site_prefix, encode(&item.key));
     let title_id = format!("post-title-{}", encode(&item.key));
 
     html! {
@@ -95,7 +93,7 @@ fn reddit_post_card(
                     } @else if let Some(forced_author) = forced_author.as_ref() {
                         (forced_author)
                     } @else {
-                        (site)
+                        (asset_site)
                     }
                 }
                 span.post_time { (timeago(item.source_published as u64)) }
@@ -111,23 +109,23 @@ fn reddit_post_card(
                     @for tag in &item.tags {
                         @match tag {
                             CrawlTag::Simple(x) =>
-                                a.post_tag href=(format!("/{}/r/tag/{}", site, encode(x))) { (x) },
+                                a.post_tag href=(format!("/{}/r/tag/{}", site_prefix, encode(x))) { (x) },
                             CrawlTag::Detailed { value, .. } =>
-                                a.post_tag href=(format!("/{}/r/tag/{}", site, encode(value))) { (value) },
+                                a.post_tag href=(format!("/{}/r/tag/{}", site_prefix, encode(value))) { (value) },
                         }
                     }
                 }
 
-                @if let Some(thumb) = item.thumbnail_path(work_dir_path) {
+                @if let Some(thumb) = item.thumbnail_path() {
                     @if thumb.ends_with(".mp4") {
                         .post_preview {
                             video.thumbnail_preview width="320" height="auto" autoplay loop muted playsinline {
-                                source src=(format!("/{}/assets/{}", site, thumb)) {}
+                                source src=(format!("/{}/assets/{}", asset_site, thumb)) {}
                             }
                         }
                     } @else {
                         .post_preview {
-                            img src=(format!("/{}/assets/{}", site, thumb)) alt=(item.title) {}
+                            img src=(format!("/{}/assets/{}", asset_site, thumb)) alt=(item.title) {}
                         }
                     }
                 }
@@ -139,17 +137,11 @@ fn reddit_post_card(
 
 // Public functions required by SiteRenderer trait
 pub fn render_listing_page(
-    work_dir: &ThreadSafeWorkDir,
+    site_prefix: &str,
     config: ListingPageConfig,
     items: &[CrawlItem],
     route: &str,
 ) -> Markup {
-    let workdir = work_dir.work_dir.read().unwrap();
-    let site = workdir.config.slug.clone();
-    let forced_author = workdir.config.forced_author.clone();
-    let hide_titles = workdir.config.hide_titles;
-    let work_dir_path = PathBuf::from(workdir.path.clone());
-
     let title = match &config.mode {
         ListingPageMode::All => match config.ordering {
             ListingPageOrdering::NewestFirst => "Newest Posts".to_string(),
@@ -173,16 +165,16 @@ pub fn render_listing_page(
             }
             .reddit_posts {
                 @for item in items {
-                    (reddit_post_card(item, &site, &forced_author, &work_dir_path, hide_titles))
+                    (reddit_post_card(item, site_prefix))
                 }
             }
             // FIXME: Don't include a paginator if the sort order is random
-            (super::paginator(config.page, config.total, config.per_page, &config.paginator_prefix(&site, "r")))
+            (super::paginator(config.page, config.total, config.per_page, &config.paginator_prefix(site_prefix, "r")))
         }
         .reddit_right_bar {}
     };
 
-    reddit_layout(&title, content, &site, route)
+    reddit_layout(&title, content, site_prefix, route)
 }
 
 fn get_file_index_info(item: &CrawlItem, current_file: &FileCrawlType) -> Option<(usize, usize)> {
@@ -251,8 +243,10 @@ pub fn post_file_paginator(
     }
 }
 
-pub fn render_media_viewer(site: &str, item: &CrawlItem, file: &FileCrawlType) -> Markup {
+pub fn render_media_viewer(site_prefix: &str, item: &CrawlItem, file: &FileCrawlType) -> Markup {
     let index_info = get_file_index_info(item, file);
+    // Use item's source site for asset paths
+    let asset_site = &item.site_settings.site_slug;
     html!(
         .media_viewer {
             @if let Some((current, total)) = index_info {
@@ -264,9 +258,9 @@ pub fn render_media_viewer(site: &str, item: &CrawlItem, file: &FileCrawlType) -
                 FileCrawlType::Image { filename, downloaded, .. } => {
                     @if *downloaded {
                         figure.post_figure {
-                            img.post_image src=(format!("/{}/assets/{}", site, filename)) alt=(item.title) {}
-                            a.fullscreen_click_target data-replace-history href=(format!("/{}/r/item-full/{}/{}", site, encode(&item.key), encode(&file.get_key()))) {}
-                            (post_file_paginator(item, &site, "item", &file))
+                            img.post_image src=(format!("/{}/assets/{}", asset_site, filename)) alt=(item.title) {}
+                            a.fullscreen_click_target data-replace-history href=(format!("/{}/r/item-full/{}/{}", site_prefix, encode(&item.key), encode(&file.get_key()))) {}
+                            (post_file_paginator(item, site_prefix, "item", &file))
                         }
                     }
                 }
@@ -275,12 +269,12 @@ pub fn render_media_viewer(site: &str, item: &CrawlItem, file: &FileCrawlType) -
                         @let coerced_filename = filename.as_mp4();
                         figure.post_figure {
                             video.post_video controls autoplay {
-                                source src=(format!("/{}/assets/{}", site, coerced_filename)) {}
+                                source src=(format!("/{}/assets/{}", asset_site, coerced_filename)) {}
                             }
-                            a.fullscreen_link data-replace-history href=(format!("/{}/r/item-full/{}/{}", site, encode(&item.key), encode(&file.get_key()))) {
+                            a.fullscreen_link data-replace-history href=(format!("/{}/r/item-full/{}/{}", site_prefix, encode(&item.key), encode(&file.get_key()))) {
                                 "⏶"
                             }
-                            (post_file_paginator(item, &site, "item", &file))
+                            (post_file_paginator(item, site_prefix, "item", &file))
                         }
                     }
                 }
@@ -292,28 +286,26 @@ pub fn render_media_viewer(site: &str, item: &CrawlItem, file: &FileCrawlType) -
 
 #[get("/item-fragment/{id}/{file_id}")]
 pub async fn media_viewer_fragment_handler(
-    workdir: web::Data<ThreadSafeWorkDir>,
+    site_source: web::Data<SiteSource>,
     path: web::Path<(String, String)>,
 ) -> impl Responder {
     let (id, file_id) = path.into_inner();
-    let site = {
-        let workdir = get_workdir(&workdir).unwrap();
-        let site = workdir.config.slug.clone();
-        site
-    };
-    let item = {
-        let workdir = get_workdir(&workdir).unwrap();
-        let item = workdir.crawled.get(&id).unwrap().clone();
-        item
-    };
+    let site_prefix = site_source.slug();
+    let item = site_source.get_item(&id).unwrap();
 
     let file = { item.flat_files().get(&file_id).unwrap().clone() };
 
-    render_media_viewer(&site, &item, &file)
+    render_media_viewer(&site_prefix, &item, &file)
 }
 
-pub fn render_full_media_viewer(site: &str, item: &CrawlItem, file: &FileCrawlType) -> Markup {
+pub fn render_full_media_viewer(
+    site_prefix: &str,
+    item: &CrawlItem,
+    file: &FileCrawlType,
+) -> Markup {
     let index_info = get_file_index_info(item, file);
+    // Use item's source site for asset paths
+    let asset_site = &item.site_settings.site_slug;
     html!(
         .media_viewer {
             @if let Some((current, total)) = index_info {
@@ -325,8 +317,8 @@ pub fn render_full_media_viewer(site: &str, item: &CrawlItem, file: &FileCrawlTy
                 FileCrawlType::Image { filename, downloaded, .. } => {
                     @if *downloaded {
                         figure.post_figure {
-                            img.post_image src=(format!("/{}/assets/{}", site, filename)) alt=(item.title) {}
-                            (post_file_paginator(item, &site, "item-full", &file))
+                            img.post_image src=(format!("/{}/assets/{}", asset_site, filename)) alt=(item.title) {}
+                            (post_file_paginator(item, site_prefix, "item-full", &file))
                         }
                     }
                 }
@@ -335,16 +327,16 @@ pub fn render_full_media_viewer(site: &str, item: &CrawlItem, file: &FileCrawlTy
                         @let coerced_filename = filename.as_mp4();
                         figure.post_figure {
                             video.post_video controls autoplay {
-                                source src=(format!("/{}/assets/{}", site, coerced_filename)) {}
+                                source src=(format!("/{}/assets/{}", asset_site, coerced_filename)) {}
                             }
-                            (post_file_paginator(item, &site, "item-full", &file))
+                            (post_file_paginator(item, site_prefix, "item-full", &file))
                         }
                     }
                 }
                 _ => {}
             }
             a.quit
-                href=(format!("/{}/r/item/{}/{}", site, encode(&item.key), encode(&file.get_key())))
+                href=(format!("/{}/r/item/{}/{}", site_prefix, encode(&item.key), encode(&file.get_key())))
                 data-is-quit
                 data-replace-history
             {
@@ -355,14 +347,13 @@ pub fn render_full_media_viewer(site: &str, item: &CrawlItem, file: &FileCrawlTy
 }
 
 pub fn render_detail_page(
-    work_dir: &ThreadSafeWorkDir,
+    site_prefix: &str,
     item: &CrawlItem,
     file: &FileCrawlType,
     route: &str,
 ) -> Markup {
-    let workdir = work_dir.work_dir.read().unwrap();
-    let site = workdir.config.slug.clone();
-    let forced_author = workdir.config.forced_author.clone();
+    // Read display settings from item.site_settings
+    let forced_author = &item.site_settings.forced_author;
 
     let content = html! {
         article.reddit_post_detail {
@@ -381,7 +372,7 @@ pub fn render_detail_page(
             }
             h1.post_title { (item.title) }
             .post_content {
-                (render_media_viewer(&site, &item, &file))
+                (render_media_viewer(site_prefix, &item, &file))
 
                 .post_description {
                     p { (item.description) }
@@ -391,9 +382,9 @@ pub fn render_detail_page(
                     @for tag in &item.tags {
                         @match tag {
                             CrawlTag::Simple(x) =>
-                                a.post_tag href=(format!("/{}/r/tag/{}", site, encode(x))) { (x) },
+                                a.post_tag href=(format!("/{}/r/tag/{}", site_prefix, encode(x))) { (x) },
                             CrawlTag::Detailed { value, .. } =>
-                                a.post_tag href=(format!("/{}/r/tag/{}", site, encode(value))) { (value) },
+                                a.post_tag href=(format!("/{}/r/tag/{}", site_prefix, encode(value))) { (value) },
                         }
                     }
                 }
@@ -419,43 +410,37 @@ pub fn render_detail_page(
         }
     };
 
-    reddit_layout(&item.title, content, &site, route)
+    reddit_layout(&item.title, content, site_prefix, route)
 }
 
 pub fn render_detail_full_page(
-    work_dir: &ThreadSafeWorkDir,
+    site_prefix: &str,
     item: &CrawlItem,
     file: &FileCrawlType,
     route: &str,
 ) -> Markup {
-    let workdir = work_dir.work_dir.read().unwrap();
-    let site = workdir.config.slug.clone();
-
     let content = html! {
         article.reddit_post_detail_full {
-            (render_full_media_viewer(&site, &item, &file))
+            (render_full_media_viewer(site_prefix, &item, &file))
         }
     };
 
-    reddit_layout_full(&item.title, content, &site, route)
+    reddit_layout_full(&item.title, content, site_prefix, route)
 }
 
 pub fn render_tags_page(
-    work_dir: &ThreadSafeWorkDir,
+    site_prefix: &str,
     tags: &HashMap<String, usize>,
     tag_order: &Vec<String>,
     route: &str,
 ) -> Markup {
-    let workdir = work_dir.work_dir.read().unwrap();
-    let site = workdir.config.slug.clone();
-
     let content = html! {
         .tag_list_page {
             h2 { "Tags" }
             ul.tag_list {
                 @for tag in tag_order {
                     li.tag_item {
-                        a href=(format!("/{}/r/tag/{}", site, encode(tag))) {
+                        a href=(format!("/{}/r/tag/{}", site_prefix, encode(tag))) {
                             span.tag_name { (tag) }
                             span.tag_count { " (" (tags.get(tag).unwrap_or(&0)) ")" }
                         }
@@ -465,17 +450,10 @@ pub fn render_tags_page(
         }
     };
 
-    reddit_layout("Tags", content, &site, route)
+    reddit_layout("Tags", content, site_prefix, route)
 }
 
-pub fn render_archive_page(
-    work_dir: &ThreadSafeWorkDir,
-    archive: &Vec<ArchiveYear>,
-    route: &str,
-) -> Markup {
-    let workdir = work_dir.work_dir.read().unwrap();
-    let site = workdir.config.slug.clone();
-
+pub fn render_archive_page(site_prefix: &str, archive: &Vec<ArchiveYear>, route: &str) -> Markup {
     let archive_months = archive
         .iter()
         .map(|year| year.months.iter())
@@ -488,7 +466,7 @@ pub fn render_archive_page(
             ul.archive_list {
                 @for month in archive_months {
                     li.archive_item {
-                        a href=(format!("/{}/r/archive/{}/{:02}", site, month.year, month.month)) {
+                        a href=(format!("/{}/r/archive/{}/{:02}", site_prefix, month.year, month.month)) {
                             span.archive_date { (format_year_month(month.year, month.month)) }
                             span.archive_count { " (" (month.count) ")" }
                         }
@@ -498,5 +476,5 @@ pub fn render_archive_page(
         }
     };
 
-    reddit_layout("Archive", content, &site, route)
+    reddit_layout("Archive", content, site_prefix, route)
 }

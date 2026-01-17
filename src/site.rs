@@ -107,6 +107,20 @@ impl From<String> for CrawlTag {
     }
 }
 
+/// Display settings attached to each item from its source site.
+/// Populated at runtime when loading WorkDir, not persisted to JSON.
+#[derive(Debug, Clone, Default)]
+pub struct SiteSettings {
+    /// The slug of the site this item belongs to (for asset paths)
+    pub site_slug: String,
+    /// Override author display with this value if set
+    pub forced_author: Option<String>,
+    /// Whether to hide titles when rendering this item
+    pub hide_titles: bool,
+    /// Path to the work directory for this item's site (for thumbnail lookups)
+    pub work_dir_path: Option<PathBuf>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 #[serde(tag = "format")]
@@ -170,6 +184,11 @@ pub struct CrawlItem {
      * means that whatever is serving the site doesn't need to dynamically generate thumbnails on the fly.
      */
     pub previews: IndexMap<String, FileCrawlType>,
+
+    /// Display settings from the source site. Populated at runtime, not persisted.
+    #[serde(skip)]
+    #[serde(default)]
+    pub site_settings: SiteSettings,
 }
 
 impl crate::collections::GetKey for CrawlItem {
@@ -179,7 +198,9 @@ impl crate::collections::GetKey for CrawlItem {
 }
 
 impl CrawlItem {
-    pub fn thumbnail_path(&self, work_dir_path: &PathBuf) -> Option<String> {
+    /// Returns the relative path to the thumbnail for this item, if one exists.
+    /// Uses `self.site_settings.work_dir_path` internally to check for auto-generated thumbnails.
+    pub fn thumbnail_path(&self) -> Option<String> {
         // first check for explicit previews
         let flat_previews = self.flat_previews();
         let first_usable_preview_file = flat_previews
@@ -193,17 +214,16 @@ impl CrawlItem {
         }
 
         // then check for auto-generated thumbnails
-        //
-        // FIXME: Could be simpler and just check for existence of
-        // auto_thumbnails/${md5(key)}.jpg and the same for gifs and just
-        //return whichever exists.
+        // Requires work_dir_path to be set in site_settings
+        let work_dir_path = self.site_settings.work_dir_path.as_ref()?;
+
         let flat_files = self.flat_files();
         let first_usable_file = flat_files
             .values()
             .find(|file| file.is_downloaded() && (file.is_image() || file.is_video()));
 
         if let Some(file) = first_usable_file {
-            let auto_path = self.calculate_auto_thumbnail_path(work_dir_path, &file);
+            let auto_path = self.calculate_auto_thumbnail_path(work_dir_path, file);
             if auto_path.exists() {
                 Some(
                     auto_path

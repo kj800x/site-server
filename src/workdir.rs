@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     reprocessors::Reprocessor,
     serde::{deserialize_map_values, serialize_map_values},
-    site::CrawlItem,
+    site::{CrawlItem, SiteSettings},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -136,6 +136,16 @@ impl WorkDir {
         // Apply reprocessors
         for reprocessor in &config.reprocessors {
             reprocessor.apply(&mut crawled.items);
+        }
+
+        // Attach site settings to each item
+        for item in crawled.items.values_mut() {
+            item.site_settings = SiteSettings {
+                site_slug: config.slug.clone(),
+                forced_author: config.forced_author.clone(),
+                hide_titles: config.hide_titles,
+                work_dir_path: Some(path.clone()),
+            };
         }
 
         let loaded_at = std::time::SystemTime::now()

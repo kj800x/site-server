@@ -25,7 +25,7 @@ use site_server::{
         generic_latest_page_handler, generic_oldest_handler, generic_oldest_page_handler,
         generic_random_handler, generic_tag_handler, generic_tag_page_handler,
         generic_tags_index_handler, media_viewer_fragment_handler, search_form_handler,
-        search_results_handler, serve_crawled_json, SiteRenderer,
+        search_results_handler, serve_crawled_json, SiteRenderer, SiteSource,
     },
     serve_static_file, thread_safe_work_dir, workdir,
 };
@@ -108,6 +108,20 @@ async fn root_index_handler(
                         }
                     }
                     tbody {
+                        tr.all-sites {
+                            td { "all" }
+                            td { "--" }
+                            td { "--" }
+                            td { "--" }
+                            td { "--" }
+                            td {
+                                a.site_link href="/all/booru/latest" { "Booru" }
+                                "|"
+                                a.site_link href="/all/blog/latest" { "Blog" }
+                                "|"
+                                a.site_link href="/all/r/latest" { "Reddit" }
+                            }
+                        }
                         @for (site, _) in sites_with_updates {
                             @let latest_update = site.crawled.items.values().map(|x| x.last_seen).max();
                             @let first_update = site.crawled.items.values().map(|x| x.first_seen).min();
@@ -241,20 +255,29 @@ async fn run() -> errors::Result<()> {
                     .service(root_index_handler)
                     .service(sites_json_handler);
 
-                for workdir in work_dirs_vec.iter() {
-                    let slug = workdir.work_dir.read().unwrap().config.slug.clone();
+                let renderers = vec![
+                    handlers::SiteRendererType::Blog,
+                    handlers::SiteRendererType::Booru,
+                    handlers::SiteRendererType::Reddit,
+                ];
 
-                    let renderers = vec![
-                        handlers::SiteRendererType::Blog,
-                        handlers::SiteRendererType::Booru,
-                        handlers::SiteRendererType::Reddit,
-                    ];
+                let site_sources = work_dirs_vec
+                    .iter()
+                    .map(|workdir| SiteSource::Single(workdir.clone()))
+                    .chain(Some(SiteSource::All {
+                        workdirs: work_dirs_vec.clone(),
+                    }))
+                    .collect::<Vec<SiteSource>>();
+
+                // Register individual site routes
+                for site_source in site_sources.iter() {
+                    let slug = site_source.slug();
 
                     // Ordering matters, do more specific routes first
                     for renderer in renderers.iter() {
                         app = app.service(
                             web::scope(&format!("{}/{}", slug, renderer.get_prefix()))
-                                .app_data(web::Data::new(workdir.clone()))
+                                .app_data(web::Data::new(site_source.clone()))
                                 .app_data(web::Data::new(renderer.clone()))
                                 .app_data(web::Data::new(WorkDirPrefix(slug.clone())))
                                 .service(generic_index_handler)
@@ -280,18 +303,17 @@ async fn run() -> errors::Result<()> {
 
                     app = app.service(
                         web::scope(&slug)
-                            .app_data(web::Data::new(workdir.clone()))
+                            .app_data(web::Data::new(site_source.clone()))
                             .app_data(web::Data::new(WorkDirPrefix(slug.clone())))
                             .service(serve_crawled_json)
-                            .service(
-                                // FIXME: Serving these files seems to exhaust the worker pool
-                                // and the server stops responding to requests. This aint good.
-                                Files::new(
-                                    "/assets",
-                                    workdir.work_dir.read().unwrap().path.clone(),
-                                )
-                                .prefer_utf8(true),
-                            ),
+                            // Only add the assets route if the site source provides an assets path
+                            .configure(|scope| {
+                                if let Some(assets_path) = site_source.get_assets_path() {
+                                    scope.service(
+                                        Files::new("/assets", assets_path).prefer_utf8(true),
+                                    );
+                                }
+                            }),
                     );
                 }
 

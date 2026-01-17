@@ -223,6 +223,134 @@ pub struct WorkDirPrefix(pub String);
 
 pub type ThreadSafeWorkDir = crate::thread_safe_work_dir::ThreadSafeWorkDir;
 
+/// Abstraction over single-site or all-sites data source.
+/// Allows handlers to work transparently with either mode.
+#[derive(Clone)]
+pub enum SiteSource {
+    /// A single site's WorkDir
+    Single(ThreadSafeWorkDir),
+    /// All sites aggregated together
+    All { workdirs: Vec<ThreadSafeWorkDir> },
+}
+
+impl SiteSource {
+    /// Returns the site prefix for URL generation ("mysite" or "all")
+    pub fn slug(&self) -> String {
+        match self {
+            SiteSource::Single(workdir) => workdir.work_dir.read().unwrap().config.slug.clone(),
+            SiteSource::All { .. } => "all".to_string(),
+        }
+    }
+
+    pub fn get_assets_path(&self) -> Option<PathBuf> {
+        match self {
+            SiteSource::Single(workdir) => {
+                let wd = workdir.work_dir.read().unwrap();
+                Some(PathBuf::from(wd.path.clone()))
+            }
+            SiteSource::All { .. } => None,
+        }
+    }
+
+    /// Returns all items with SiteSettings already attached.
+    /// For All variant, items have namespaced keys: "{site_slug}/{item.key}"
+    pub fn all_items(&self) -> Vec<CrawlItem> {
+        match self {
+            SiteSource::Single(workdir) => {
+                let wd = workdir.work_dir.read().unwrap();
+                wd.crawled.items.values().cloned().collect()
+            }
+            SiteSource::All { workdirs } => {
+                let mut all_items = Vec::new();
+                for workdir in workdirs {
+                    let wd = workdir.work_dir.read().unwrap();
+                    let site_slug = &wd.config.slug;
+                    for item in wd.crawled.items.values() {
+                        let mut namespaced_item = item.clone();
+                        // Namespace the key to avoid collisions
+                        namespaced_item.key = format!("{}/{}", site_slug, item.key);
+                        all_items.push(namespaced_item);
+                    }
+                }
+                all_items
+            }
+        }
+    }
+
+    /// Get an item by key. For All variant, key should be namespaced as "site_slug/item_key"
+    pub fn get_item(&self, key: &str) -> Option<CrawlItem> {
+        match self {
+            SiteSource::Single(workdir) => {
+                let wd = workdir.work_dir.read().unwrap();
+                wd.crawled.items.get(key).cloned()
+            }
+            SiteSource::All { workdirs } => {
+                // Parse the namespaced key: "site_slug/item_key"
+                let parts: Vec<&str> = key.splitn(2, '/').collect();
+                if parts.len() != 2 {
+                    return None;
+                }
+                let (site_slug, item_key) = (parts[0], parts[1]);
+
+                for workdir in workdirs {
+                    let wd = workdir.work_dir.read().unwrap();
+                    if wd.config.slug == site_slug {
+                        if let Some(item) = wd.crawled.items.get(item_key) {
+                            let mut namespaced_item = item.clone();
+                            namespaced_item.key = key.to_string();
+                            return Some(namespaced_item);
+                        }
+                    }
+                }
+                None
+            }
+        }
+    }
+
+    /// Get the work directory path for a given site slug (for thumbnail lookups)
+    pub fn get_work_dir_path(&self, site_slug: &str) -> Option<PathBuf> {
+        match self {
+            SiteSource::Single(workdir) => {
+                let wd = workdir.work_dir.read().unwrap();
+                if wd.config.slug == site_slug {
+                    Some(PathBuf::from(wd.path.clone()))
+                } else {
+                    None
+                }
+            }
+            SiteSource::All { workdirs } => {
+                for workdir in workdirs {
+                    let wd = workdir.work_dir.read().unwrap();
+                    if wd.config.slug == site_slug {
+                        return Some(PathBuf::from(wd.path.clone()));
+                    }
+                }
+                None
+            }
+        }
+    }
+
+    /// Get tags and their counts across all items
+    pub fn get_tags(&self) -> HashMap<String, usize> {
+        use crate::site::CrawlTag;
+
+        let items = self.all_items();
+        let mut tags: HashMap<String, usize> = HashMap::new();
+
+        for item in items {
+            for tag in &item.tags {
+                let tag_str = match tag {
+                    CrawlTag::Simple(x) => x.clone(),
+                    CrawlTag::Detailed { value, .. } => value.clone(),
+                };
+                *tags.entry(tag_str).or_insert(0) += 1;
+            }
+        }
+
+        tags
+    }
+}
+
 pub enum ListingPageMode {
     All,
     ByTag { tag: String },
@@ -288,34 +416,34 @@ pub enum SiteRendererType {
 pub trait SiteRenderer {
     fn render_listing_page(
         &self,
-        work_dir: &ThreadSafeWorkDir,
+        site_prefix: &str,
         config: ListingPageConfig,
         items: &[CrawlItem],
         route: &str,
     ) -> Markup;
     fn render_detail_page(
         &self,
-        work_dir: &ThreadSafeWorkDir,
+        site_prefix: &str,
         item: &CrawlItem,
         file: &FileCrawlType,
         route: &str,
     ) -> Markup;
     fn render_tags_page(
         &self,
-        work_dir: &ThreadSafeWorkDir,
+        site_prefix: &str,
         tags: &HashMap<String, usize>,
         tag_order: &Vec<String>,
         route: &str,
     ) -> Markup;
     fn render_archive_page(
         &self,
-        work_dir: &ThreadSafeWorkDir,
+        site_prefix: &str,
         archive: &Vec<ArchiveYear>,
         route: &str,
     ) -> Markup;
     fn render_detail_full_page(
         &self,
-        work_dir: &ThreadSafeWorkDir,
+        site_prefix: &str,
         item: &CrawlItem,
         file: &FileCrawlType,
         route: &str,
@@ -326,71 +454,77 @@ pub trait SiteRenderer {
 impl SiteRenderer for SiteRendererType {
     fn render_listing_page(
         &self,
-        work_dir: &ThreadSafeWorkDir,
+        site_prefix: &str,
         config: ListingPageConfig,
         items: &[CrawlItem],
         route: &str,
     ) -> Markup {
         match self {
-            SiteRendererType::Blog => blog::render_listing_page(work_dir, config, items, route),
-            SiteRendererType::Booru => booru::render_listing_page(work_dir, config, items, route),
-            SiteRendererType::Reddit => reddit::render_listing_page(work_dir, config, items, route),
+            SiteRendererType::Blog => blog::render_listing_page(site_prefix, config, items, route),
+            SiteRendererType::Booru => {
+                booru::render_listing_page(site_prefix, config, items, route)
+            }
+            SiteRendererType::Reddit => {
+                reddit::render_listing_page(site_prefix, config, items, route)
+            }
         }
     }
 
     fn render_detail_page(
         &self,
-        work_dir: &ThreadSafeWorkDir,
+        site_prefix: &str,
         item: &CrawlItem,
         file: &FileCrawlType,
         route: &str,
     ) -> Markup {
         match self {
-            SiteRendererType::Blog => blog::render_detail_page(work_dir, item, file, route),
-            SiteRendererType::Booru => booru::render_detail_page(work_dir, item, file, route),
-            SiteRendererType::Reddit => reddit::render_detail_page(work_dir, item, file, route),
+            SiteRendererType::Blog => blog::render_detail_page(site_prefix, item, file, route),
+            SiteRendererType::Booru => booru::render_detail_page(site_prefix, item, file, route),
+            SiteRendererType::Reddit => reddit::render_detail_page(site_prefix, item, file, route),
         }
     }
 
     fn render_tags_page(
         &self,
-        work_dir: &ThreadSafeWorkDir,
+        site_prefix: &str,
         tags: &HashMap<String, usize>,
         tag_order: &Vec<String>,
         route: &str,
     ) -> Markup {
         match self {
-            SiteRendererType::Blog => blog::render_tags_page(work_dir, tags, tag_order, route),
-            SiteRendererType::Booru => booru::render_tags_page(work_dir, tags, tag_order, route),
-            SiteRendererType::Reddit => reddit::render_tags_page(work_dir, tags, tag_order, route),
+            SiteRendererType::Blog => blog::render_tags_page(site_prefix, tags, tag_order, route),
+            SiteRendererType::Booru => booru::render_tags_page(site_prefix, tags, tag_order, route),
+            SiteRendererType::Reddit => {
+                reddit::render_tags_page(site_prefix, tags, tag_order, route)
+            }
         }
     }
 
     fn render_archive_page(
         &self,
-        work_dir: &ThreadSafeWorkDir,
+        site_prefix: &str,
         archive: &Vec<ArchiveYear>,
         route: &str,
     ) -> Markup {
         match self {
-            SiteRendererType::Blog => blog::render_archive_page(work_dir, archive, route),
-            SiteRendererType::Booru => booru::render_archive_page(work_dir, archive, route),
-            SiteRendererType::Reddit => reddit::render_archive_page(work_dir, archive, route),
+            SiteRendererType::Blog => blog::render_archive_page(site_prefix, archive, route),
+            SiteRendererType::Booru => booru::render_archive_page(site_prefix, archive, route),
+            SiteRendererType::Reddit => reddit::render_archive_page(site_prefix, archive, route),
         }
     }
 
     fn render_detail_full_page(
         &self,
-        work_dir: &ThreadSafeWorkDir,
+        site_prefix: &str,
         item: &CrawlItem,
         file: &FileCrawlType,
         route: &str,
     ) -> Markup {
         match self {
-            SiteRendererType::Blog => blog::render_detail_page(work_dir, item, file, route),
-            SiteRendererType::Booru => booru::render_detail_page(work_dir, item, file, route),
+            SiteRendererType::Blog => blog::render_detail_page(site_prefix, item, file, route),
+            SiteRendererType::Booru => booru::render_detail_page(site_prefix, item, file, route),
             SiteRendererType::Reddit => {
-                reddit::render_detail_full_page(work_dir, item, file, route)
+                reddit::render_detail_full_page(site_prefix, item, file, route)
             }
         }
     }

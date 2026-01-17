@@ -1,25 +1,25 @@
 use chrono::{Month, TimeZone, Utc};
 use maud::{html, Markup};
 use std::collections::HashMap;
-use std::path::PathBuf;
 use urlencoding::encode;
 
 use super::{ArchiveYear, ListingPageConfig, ListingPageMode};
 use crate::handlers::{ExtensionFix, PaginatorPrefix};
 use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
-use crate::thread_safe_work_dir::ThreadSafeWorkDir;
 
 // Helper functions for rendering blog components
-fn blog_post_card(item: &CrawlItem, site: &str, work_dir_path: &PathBuf) -> Markup {
+fn blog_post_card(item: &CrawlItem, site_prefix: &str) -> Markup {
     let time = Utc
         .timestamp_millis_opt(item.source_published as i64)
         .unwrap();
+    // Use item's source site for asset paths
+    let asset_site = &item.site_settings.site_slug;
 
     html! {
         article.blog_post_card {
             header.post_header {
                 h3.post_title {
-                    a href=(format!("/{}/blog/item/{}", site, encode(&item.key))) { (item.title) }
+                    a href=(format!("/{}/blog/item/{}", site_prefix, encode(&item.key))) { (item.title) }
                 }
             }
             .post_meta {
@@ -27,16 +27,16 @@ fn blog_post_card(item: &CrawlItem, site: &str, work_dir_path: &PathBuf) -> Mark
                     (time.format("%B %d, %Y"))
                 }
             }
-            @if let Some(thumb) = item.thumbnail_path(work_dir_path) {
+            @if let Some(thumb) = item.thumbnail_path() {
                 @if thumb.ends_with(".mp4") {
                     .post_preview {
                         video.thumbnail_preview autoplay loop muted playsinline {
-                            source src=(format!("/{}/assets/{}", site, thumb)) {}
+                            source src=(format!("/{}/assets/{}", asset_site, thumb)) {}
                         }
                     }
                 } @else {
                     .post_preview {
-                        img src=(format!("/{}/assets/{}", site, thumb)) alt=(item.title) {}
+                        img src=(format!("/{}/assets/{}", asset_site, thumb)) alt=(item.title) {}
                     }
                 }
             }
@@ -48,9 +48,9 @@ fn blog_post_card(item: &CrawlItem, site: &str, work_dir_path: &PathBuf) -> Mark
                     @for tag in &item.tags {
                         @match tag {
                             CrawlTag::Simple(x) =>
-                                a.post_tag href=(format!("/{}/blog/tag/{}", site, encode(x))) { (x) },
+                                a.post_tag href=(format!("/{}/blog/tag/{}", site_prefix, encode(x))) { (x) },
                             CrawlTag::Detailed { value, .. } =>
-                                a.post_tag href=(format!("/{}/blog/tag/{}", site, encode(value))) { (value) },
+                                a.post_tag href=(format!("/{}/blog/tag/{}", site_prefix, encode(value))) { (value) },
                         }
                     }
                 }
@@ -88,15 +88,11 @@ fn blog_layout(title: &str, content: Markup, site: &str, route: &str) -> Markup 
 
 // Public functions required by SiteRenderer trait
 pub fn render_listing_page(
-    work_dir: &ThreadSafeWorkDir,
+    site_prefix: &str,
     config: ListingPageConfig,
     items: &[CrawlItem],
     route: &str,
 ) -> Markup {
-    let workdir = work_dir.work_dir.read().unwrap();
-    let site = workdir.config.slug.clone();
-    let work_dir_path = PathBuf::from(workdir.path.clone());
-
     let title = match &config.mode {
         ListingPageMode::All => String::new(),
         ListingPageMode::ByTag { tag } => format!("Posts tagged \"{}\"", tag),
@@ -113,23 +109,23 @@ pub fn render_listing_page(
     let content = html! {
         .blog_posts {
             @for item in items {
-                (blog_post_card(item, &site, &work_dir_path))
+                (blog_post_card(item, site_prefix))
             }
         }
-        (super::paginator(config.page, config.total, config.per_page, &config.paginator_prefix(&site, "blog")))
+        (super::paginator(config.page, config.total, config.per_page, &config.paginator_prefix(site_prefix, "blog")))
     };
 
-    blog_layout(&title, content, &site, route)
+    blog_layout(&title, content, site_prefix, route)
 }
 
 pub fn render_detail_page(
-    work_dir: &ThreadSafeWorkDir,
+    site_prefix: &str,
     item: &CrawlItem,
     file: &FileCrawlType,
     route: &str,
 ) -> Markup {
-    let workdir = work_dir.work_dir.read().unwrap();
-    let site = workdir.config.slug.clone();
+    // Use item's source site for asset paths
+    let asset_site = &item.site_settings.site_slug;
     let time = Utc
         .timestamp_millis_opt(item.source_published as i64)
         .unwrap();
@@ -149,7 +145,7 @@ pub fn render_detail_page(
                     FileCrawlType::Image { filename, downloaded, .. } => {
                         @if *downloaded {
                             figure.post_figure {
-                                img.post_image src=(format!("/{}/assets/{}", site, filename)) alt=(item.title) {}
+                                img.post_image src=(format!("/{}/assets/{}", asset_site, filename)) alt=(item.title) {}
                             }
                         }
                     }
@@ -158,7 +154,7 @@ pub fn render_detail_page(
                             @let coerced_filename = filename.as_mp4();
                             figure.post_figure {
                                 video.post_video controls autoplay {
-                                    source src=(format!("/{}/assets/{}", site, coerced_filename)) {}
+                                    source src=(format!("/{}/assets/{}", asset_site, coerced_filename)) {}
                                 }
                             }
                         }
@@ -187,9 +183,9 @@ pub fn render_detail_page(
                     @for tag in &item.tags {
                         @match tag {
                             CrawlTag::Simple(x) =>
-                                a.post_tag href=(format!("/{}/blog/tag/{}", site, encode(x))) { (x) },
+                                a.post_tag href=(format!("/{}/blog/tag/{}", site_prefix, encode(x))) { (x) },
                             CrawlTag::Detailed { value, .. } =>
-                                a.post_tag href=(format!("/{}/blog/tag/{}", site, encode(value))) { (value) },
+                                a.post_tag href=(format!("/{}/blog/tag/{}", site_prefix, encode(value))) { (value) },
                         }
                     }
                 }
@@ -201,25 +197,22 @@ pub fn render_detail_page(
         }
     };
 
-    blog_layout("", content, &site, route)
+    blog_layout("", content, site_prefix, route)
 }
 
 pub fn render_tags_page(
-    work_dir: &ThreadSafeWorkDir,
+    site_prefix: &str,
     tags: &HashMap<String, usize>,
     tag_order: &Vec<String>,
     route: &str,
 ) -> Markup {
-    let workdir = work_dir.work_dir.read().unwrap();
-    let site = workdir.config.slug.clone();
-
     let content = html! {
         .tag_list_page {
             h2 { "Tags" }
             ul.tag_list {
                 @for tag in tag_order {
                     li.tag_item {
-                        a href=(format!("/{}/blog/tag/{}", site, encode(tag))) {
+                        a href=(format!("/{}/blog/tag/{}", site_prefix, encode(tag))) {
                             span.tag_name { (tag) }
                             span.tag_count { " (" (tags.get(tag).unwrap_or(&0)) ")" }
                         }
@@ -229,17 +222,10 @@ pub fn render_tags_page(
         }
     };
 
-    blog_layout("Tags", content, &site, route)
+    blog_layout("Tags", content, site_prefix, route)
 }
 
-pub fn render_archive_page(
-    work_dir: &ThreadSafeWorkDir,
-    archive: &Vec<ArchiveYear>,
-    route: &str,
-) -> Markup {
-    let workdir = work_dir.work_dir.read().unwrap();
-    let site = workdir.config.slug.clone();
-
+pub fn render_archive_page(site_prefix: &str, archive: &Vec<ArchiveYear>, route: &str) -> Markup {
     let content = html! {
         .blog_archive_page {
             h2 { "Archive" }
@@ -250,7 +236,7 @@ pub fn render_archive_page(
                         ul.month_list {
                             @for month in year.months.iter().rev() {
                                 li.archive_month {
-                                    a href=(format!("/{}/blog/archive/{}/{:02}", site, year.year, month.month)) {
+                                    a href=(format!("/{}/blog/archive/{}/{:02}", site_prefix, year.year, month.month)) {
                                         span.month_name { (Month::try_from(month.month).unwrap().name()) }
                                         span.month_count { "(" (month.count) ")" }
                                     }
@@ -263,5 +249,5 @@ pub fn render_archive_page(
         }
     };
 
-    blog_layout("Archive", content, &site, route)
+    blog_layout("Archive", content, site_prefix, route)
 }
