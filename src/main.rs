@@ -108,20 +108,6 @@ async fn root_index_handler(
                         }
                     }
                     tbody {
-                        tr.all-sites {
-                            td { "all" }
-                            td { "--" }
-                            td { "--" }
-                            td { "--" }
-                            td { "--" }
-                            td {
-                                a.site_link href="/all/booru/latest" { "Booru" }
-                                "|"
-                                a.site_link href="/all/blog/latest" { "Blog" }
-                                "|"
-                                a.site_link href="/all/r/latest" { "Reddit" }
-                            }
-                        }
                         @for (site, _) in sites_with_updates {
                             @let latest_update = site.crawled.items.values().map(|x| x.last_seen).max();
                             @let first_update = site.crawled.items.values().map(|x| x.first_seen).min();
@@ -139,6 +125,20 @@ async fn root_index_handler(
                                     "|"
                                     a.site_link href=(format!("/{}/r/latest", site.config.slug)) { "Reddit" }
                                 }
+                            }
+                        }
+                        tr.all-sites {
+                            td { "all" }
+                            td { "" }
+                            td { "" }
+                            td { "" }
+                            td { "" }
+                            td {
+                                a.site_link href="/all/booru/latest" { "Booru" }
+                                "|"
+                                a.site_link href="/all/blog/latest" { "Blog" }
+                                "|"
+                                a.site_link href="/all/r/latest" { "Reddit" }
                             }
                         }
                     }

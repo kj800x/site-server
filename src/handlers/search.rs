@@ -70,6 +70,7 @@ pub async fn search_form_handler(
                                         li { code { "not" } " - negates the argument (unary)" }
                                         li { code { "tag" } " - exact tag match (case-insensitive)" }
                                         li { code { "type" } " - file type: \"image\", \"video\", or \"text\"" }
+                                        li { code { "site" } " - exact match on source site slug" }
                                         li { code { "fulltext" } " - search in title, meta, description, url, and text files" }
                                         li { code { "title" } " - substring match in title (case-insensitive)" }
                                         li { code { "meta" } " - substring match in any meta value (case-insensitive)" }
@@ -84,6 +85,7 @@ pub async fn search_form_handler(
                                         li { code { "(and (tag \"foobar\") (type \"image\") (not (type \"video\")))" } }
                                         li { code { "(or (title \"example\") (fulltext \"search term\"))" } }
                                         li { code { "(after \"2024-01-01T00:00:00Z\")" } }
+                                        li { code { "(and (site \"r-aww\") (tag \"cute\"))" } }
                                     }
                                 }
                             }

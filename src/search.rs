@@ -1,3 +1,9 @@
+//! S-expression search parser and evaluator.
+//!
+//! NOTE: When adding or modifying search functions in this file, you must also
+//! update the documentation and examples in `src/handlers/search.rs` (the search
+//! form tooltip that shows available functions and examples to users).
+
 use crate::reprocessors::{extract_text_from_formatted_text, search_json_value_recursive};
 use crate::site::{CrawlItem, FileCrawlType};
 use chrono::DateTime;
@@ -9,6 +15,7 @@ pub enum SearchExpr {
     Not(Box<SearchExpr>),
     Tag(String),
     Type(String), // "image", "video", or "text"
+    Site(String), // matches item.site_settings.site_slug
     Fulltext(String),
     Title(String),
     Meta(String),
@@ -196,8 +203,8 @@ fn parse_expr(tokens: &[Token], start: usize) -> Result<(SearchExpr, usize), Par
                     pos = new_pos + 1;
                     Ok((SearchExpr::Not(Box::new(expr)), pos))
                 }
-                "tag" | "type" | "fulltext" | "title" | "meta" | "desc" | "url" | "after"
-                | "before" => {
+                "tag" | "type" | "site" | "fulltext" | "title" | "meta" | "desc" | "url"
+                | "after" | "before" => {
                     if pos >= tokens.len() {
                         return Err(ParseError::UnexpectedEnd);
                     }
@@ -241,6 +248,7 @@ fn parse_expr(tokens: &[Token], start: usize) -> Result<(SearchExpr, usize), Par
                             }
                             SearchExpr::Type(type_lower)
                         }
+                        "site" => SearchExpr::Site(arg),
                         "fulltext" => SearchExpr::Fulltext(arg),
                         "title" => SearchExpr::Title(arg),
                         "meta" => SearchExpr::Meta(arg),
@@ -295,6 +303,7 @@ pub fn evaluate_search_expr(expr: &SearchExpr, item: &CrawlItem) -> bool {
                 _ => false,
             }
         }
+        SearchExpr::Site(site_slug) => item.site_settings.site_slug == *site_slug,
         SearchExpr::Fulltext(search_text) => {
             let search_lower = search_text.to_lowercase();
 
