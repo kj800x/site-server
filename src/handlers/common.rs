@@ -77,3 +77,17 @@ pub fn date_time_element(timestamp: Option<u64>) -> maud::Markup {
         }
     }
 }
+
+/// Get the first downloaded file ID from an item
+pub fn get_first_downloaded_file_id(item: &crate::site::CrawlItem) -> Option<String> {
+    use indexmap::IndexMap;
+    use crate::site::FileCrawlType;
+    
+    item.flat_files()
+        .into_iter()
+        .filter(|(_, file)| file.is_downloaded())
+        .collect::<IndexMap<String, FileCrawlType>>()
+        .keys()
+        .next()
+        .cloned()
+}

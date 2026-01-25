@@ -4,18 +4,21 @@ use actix_web::{get, web, HttpResponse, Responder};
 use chrono::{DateTime, Datelike, TimeZone, Utc};
 use indexmap::IndexMap;
 use itertools::Itertools;
-use rand::seq::SliceRandom;
+use rand::{seq::SliceRandom, SeedableRng};
+use rand::rngs::StdRng;
 use serde::Deserialize;
 use urlencoding::encode;
 
 use crate::{
     handlers::WorkDirPrefix,
+    search::{evaluate_search_expr, parse_search_expr},
     site::{CrawlItem, CrawlTag, FileCrawlType},
 };
+use urlencoding::decode;
 
 use super::{
-    ListingPageConfig, ListingPageMode, ListingPageOrdering, SiteRenderer, SiteRendererType,
-    SiteSource,
+    ListingPageConfig, ListingPageMode, ListingPageOrdering, PageUrlState, SiteRenderer, SiteRendererType,
+    SiteSource, ViewMode,
 };
 
 fn resolve_listing_page(site_source: &SiteSource, mode: &ListingPageMode) -> Vec<CrawlItem> {
@@ -60,6 +63,29 @@ fn apply_selection(items: &[CrawlItem], config: &ListingPageConfig) -> Vec<Crawl
     } else {
         items[start..end].to_vec()
     }
+}
+
+fn apply_ordering(items: &[CrawlItem], ordering: &ListingPageOrdering) -> Vec<CrawlItem> {
+    let mut items = items.to_vec();
+    match ordering {
+        ListingPageOrdering::NewestFirst => items.sort_by_key(|item| -item.source_published),
+        ListingPageOrdering::OldestFirst => items.sort_by_key(|item| item.source_published),
+        ListingPageOrdering::Random => {
+            // Use a deterministic seed based on the items themselves for consistency
+            // This ensures the same random order is used across requests
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut hasher = DefaultHasher::new();
+            items.len().hash(&mut hasher);
+            for item in &items {
+                item.key.hash(&mut hasher);
+            }
+            let seed = hasher.finish();
+            let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+            items.shuffle(&mut rng);
+        }
+    };
+    items
 }
 
 #[get("")]
@@ -408,16 +434,8 @@ pub async fn generic_detail_redirect(
     let site_prefix = site_source.slug();
     let item = site_source.get_item(&id).unwrap();
 
-    let file_id = {
-        item.flat_files()
-            .into_iter()
-            .filter(|(_, file)| file.is_downloaded())
-            .collect::<IndexMap<String, FileCrawlType>>()
-            .keys()
-            .next()
-            .unwrap()
-            .to_string()
-    };
+    let file_id = super::common::get_first_downloaded_file_id(&item)
+        .expect("Item must have at least one downloaded file");
 
     HttpResponse::SeeOther()
         .append_header((
@@ -433,11 +451,18 @@ pub async fn generic_detail_redirect(
         .finish()
 }
 
+#[derive(serde::Deserialize)]
+struct ViewModeQuery {
+    view: Option<String>,
+    file: Option<String>,
+}
+
 #[get("/item/{id}/{file_id}")]
 pub async fn generic_detail_handler(
     renderer: web::Data<SiteRendererType>,
     site_source: web::Data<SiteSource>,
     path: web::Path<(String, String)>,
+    query: web::Query<ViewModeQuery>,
 ) -> impl Responder {
     let (id, file_id) = path.into_inner();
     let renderer = renderer.into_inner();
@@ -445,35 +470,34 @@ pub async fn generic_detail_handler(
     let item = site_source.get_item(&id).unwrap();
 
     let file = { item.flat_files().get(&file_id).unwrap().clone() };
+    let is_full = query.view.as_deref() == Some("full");
+    
+    // Construct PageUrlState directly from handler context
+    let url_state = PageUrlState::permalink(
+        site_prefix.clone(),
+        renderer.get_prefix().to_string(),
+        id.clone(),
+        file_id.clone(),
+        if is_full { ViewMode::Full } else { ViewMode::Normal },
+    );
 
-    renderer.render_detail_page(
-        &site_prefix,
-        &item,
-        &file,
-        &format!("/item/{}/{}", encode(&id), encode(&file_id)),
-    )
+    if is_full {
+        renderer.render_detail_full_page(
+            &site_prefix,
+            &item,
+            &file,
+            &url_state,
+        )
+    } else {
+        renderer.render_detail_page(
+            &site_prefix,
+            &item,
+            &file,
+            &url_state,
+        )
+    }
 }
 
-#[get("/item-full/{id}/{file_id}")]
-pub async fn generic_detail_full_handler(
-    renderer: web::Data<SiteRendererType>,
-    site_source: web::Data<SiteSource>,
-    path: web::Path<(String, String)>,
-) -> impl Responder {
-    let (id, file_id) = path.into_inner();
-    let renderer = renderer.into_inner();
-    let site_prefix = site_source.slug();
-    let item = site_source.get_item(&id).unwrap();
-
-    let file = { item.flat_files().get(&file_id).unwrap().clone() };
-
-    renderer.render_detail_full_page(
-        &site_prefix,
-        &item,
-        &file,
-        &format!("/item-full/{}/{}", encode(&id), encode(&file_id)),
-    )
-}
 
 #[get("/crawled.json")]
 pub async fn serve_crawled_json(
@@ -485,4 +509,1038 @@ pub async fn serve_crawled_json(
     Ok(HttpResponse::Ok()
         .content_type("application/json")
         .body(json))
+}
+
+// Slideshow handlers
+#[get("/latest/slideshow/{i}")]
+pub async fn generic_latest_slideshow_redirect_handler(
+    renderer: web::Data<SiteRendererType>,
+    site_source: web::Data<SiteSource>,
+    index: web::Path<usize>,
+) -> impl Responder {
+    let renderer = renderer.into_inner();
+    let site_prefix = site_source.slug();
+    let rendering_prefix = renderer.get_prefix();
+    let i = index.into_inner();
+    
+    let items = resolve_listing_page(&site_source, &ListingPageMode::All);
+    let ordered_items = apply_ordering(&items, &ListingPageOrdering::NewestFirst);
+    
+    if ordered_items.is_empty() || i == 0 || i > ordered_items.len() {
+        return HttpResponse::NotFound().body("No items found");
+    }
+    
+    let current_item = &ordered_items[i - 1];
+    let file_id = super::common::get_first_downloaded_file_id(current_item);
+    
+    if let Some(file_id) = file_id {
+        HttpResponse::SeeOther()
+            .append_header(("Location", format!("/{}/{}/latest/slideshow/{}/{}", site_prefix, rendering_prefix, i, encode(&file_id))))
+            .finish()
+    } else {
+        HttpResponse::NotFound().body("No file found for item")
+    }
+}
+
+#[get("/latest/slideshow/{i}/{file_id}")]
+pub async fn generic_latest_slideshow_handler(
+    renderer: web::Data<SiteRendererType>,
+    site_source: web::Data<SiteSource>,
+    path: web::Path<(usize, String)>,
+    query: web::Query<ViewModeQuery>,
+) -> impl Responder {
+    let (i, file_id_param) = path.into_inner();
+    let renderer = renderer.into_inner();
+    let site_prefix = site_source.slug();
+    let rendering_prefix = renderer.get_prefix();
+
+    if i == 0 {
+        return HttpResponse::SeeOther()
+            .append_header(("Location", format!("/{}/{}/latest/slideshow/1", site_prefix, rendering_prefix)))
+            .finish();
+    }
+
+    let items = resolve_listing_page(&site_source, &ListingPageMode::All);
+    let ordered_items = apply_ordering(&items, &ListingPageOrdering::NewestFirst);
+
+    if ordered_items.is_empty() {
+        return HttpResponse::NotFound().body("No items found");
+    }
+
+    if i > ordered_items.len() {
+        return HttpResponse::SeeOther()
+            .append_header(("Location", format!("/{}/{}/latest/slideshow/{}", site_prefix, rendering_prefix, ordered_items.len())))
+            .finish();
+    }
+
+    let current_item = &ordered_items[i - 1];
+    let prev_index = if i > 1 { Some(i - 1) } else { None };
+    let next_index = if i < ordered_items.len() { Some(i + 1) } else { None };
+
+    // Decode file_id from URL
+    let decoded_file_id = match decode(&file_id_param) {
+        Ok(decoded) => decoded.to_string(),
+        Err(_) => {
+            return HttpResponse::BadRequest().body("Invalid file ID encoding");
+        }
+    };
+
+    // Verify the file exists in the item
+    let file = match current_item.flat_files().get(&decoded_file_id) {
+        Some(f) if f.is_downloaded() => f.clone(),
+        _ => {
+            // File not found or not downloaded, redirect to first file
+            if let Some(first_file_id) = super::common::get_first_downloaded_file_id(current_item) {
+                return HttpResponse::SeeOther()
+                    .append_header(("Location", format!("/{}/{}/latest/slideshow/{}/{}", site_prefix, rendering_prefix, i, encode(&first_file_id))))
+                    .finish();
+            } else {
+                return HttpResponse::NotFound().body("No file found for item");
+            }
+        }
+    };
+
+    let is_full = query.view.as_deref() == Some("full");
+    let config = ListingPageConfig {
+        mode: ListingPageMode::All,
+        ordering: ListingPageOrdering::NewestFirst,
+        page: 1,
+        per_page: 15,
+        total: ordered_items.len(),
+    };
+    
+    // Construct PageUrlState directly from handler context
+    let url_state = PageUrlState::slideshow(
+        site_prefix.clone(),
+        rendering_prefix.to_string(),
+        &config,
+        i,
+        decoded_file_id.clone(),
+        if is_full { ViewMode::Full } else { ViewMode::Normal },
+    );
+    let back_url = url_state.with_view_mode(ViewMode::Normal).to_url();
+    // For prev/next URLs, we need to get the first file of those items
+    let prev_url = prev_index.and_then(|idx| {
+        let prev_item = ordered_items.get(idx - 1)?;
+        let prev_file_id = super::common::get_first_downloaded_file_id(prev_item)?;
+        Some(PageUrlState::slideshow(
+            site_prefix.clone(),
+            rendering_prefix.to_string(),
+            &config,
+            idx,
+            prev_file_id,
+            if is_full { ViewMode::Full } else { ViewMode::Normal },
+        ).to_url())
+    });
+    let next_url = next_index.and_then(|idx| {
+        let next_item = ordered_items.get(idx - 1)?;
+        let next_file_id = super::common::get_first_downloaded_file_id(next_item)?;
+        Some(PageUrlState::slideshow(
+            site_prefix.clone(),
+            rendering_prefix.to_string(),
+            &config,
+            idx,
+            next_file_id,
+            if is_full { ViewMode::Full } else { ViewMode::Normal },
+        ).to_url())
+    });
+
+    let markup = if is_full {
+        renderer.render_slideshow_full_page(
+            &site_prefix,
+            current_item,
+            &file,
+            &url_state,
+            prev_url.as_deref(),
+            next_url.as_deref(),
+            &back_url,
+        )
+    } else {
+        renderer.render_slideshow_detail_page(
+            &site_prefix,
+            current_item,
+            &file,
+            &url_state,
+            prev_url.as_deref(),
+            next_url.as_deref(),
+        )
+    };
+    HttpResponse::Ok().body(markup.0)
+}
+
+#[get("/oldest/slideshow/{i}")]
+pub async fn generic_oldest_slideshow_redirect_handler(
+    renderer: web::Data<SiteRendererType>,
+    site_source: web::Data<SiteSource>,
+    index: web::Path<usize>,
+) -> impl Responder {
+    let renderer = renderer.into_inner();
+    let site_prefix = site_source.slug();
+    let rendering_prefix = renderer.get_prefix();
+    let i = index.into_inner();
+    
+    let items = resolve_listing_page(&site_source, &ListingPageMode::All);
+    let ordered_items = apply_ordering(&items, &ListingPageOrdering::OldestFirst);
+    
+    if ordered_items.is_empty() || i == 0 || i > ordered_items.len() {
+        return HttpResponse::NotFound().body("No items found");
+    }
+    
+    let current_item = &ordered_items[i - 1];
+    let file_id = super::common::get_first_downloaded_file_id(current_item);
+    
+    if let Some(file_id) = file_id {
+        HttpResponse::SeeOther()
+            .append_header(("Location", format!("/{}/{}/oldest/slideshow/{}/{}", site_prefix, rendering_prefix, i, encode(&file_id))))
+            .finish()
+    } else {
+        HttpResponse::NotFound().body("No file found for item")
+    }
+}
+
+#[get("/oldest/slideshow/{i}/{file_id}")]
+pub async fn generic_oldest_slideshow_handler(
+    renderer: web::Data<SiteRendererType>,
+    site_source: web::Data<SiteSource>,
+    path: web::Path<(usize, String)>,
+    query: web::Query<ViewModeQuery>,
+) -> impl Responder {
+    let (i, file_id_param) = path.into_inner();
+    let renderer = renderer.into_inner();
+    let site_prefix = site_source.slug();
+    let rendering_prefix = renderer.get_prefix();
+
+    if i == 0 {
+        return HttpResponse::SeeOther()
+            .append_header(("Location", format!("/{}/{}/oldest/slideshow/1", site_prefix, rendering_prefix)))
+            .finish();
+    }
+
+    let items = resolve_listing_page(&site_source, &ListingPageMode::All);
+    let ordered_items = apply_ordering(&items, &ListingPageOrdering::OldestFirst);
+
+    if ordered_items.is_empty() {
+        return HttpResponse::NotFound().body("No items found");
+    }
+
+    if i > ordered_items.len() {
+        return HttpResponse::SeeOther()
+            .append_header(("Location", format!("/{}/{}/oldest/slideshow/{}", site_prefix, rendering_prefix, ordered_items.len())))
+            .finish();
+    }
+
+    let current_item = &ordered_items[i - 1];
+    let prev_index = if i > 1 { Some(i - 1) } else { None };
+    let next_index = if i < ordered_items.len() { Some(i + 1) } else { None };
+
+    // Decode file_id from URL
+    let decoded_file_id = match decode(&file_id_param) {
+        Ok(decoded) => decoded.to_string(),
+        Err(_) => {
+            return HttpResponse::BadRequest().body("Invalid file ID encoding");
+        }
+    };
+
+    // Verify the file exists in the item
+    let file = match current_item.flat_files().get(&decoded_file_id) {
+        Some(f) if f.is_downloaded() => f.clone(),
+        _ => {
+            // File not found or not downloaded, redirect to first file
+            if let Some(first_file_id) = super::common::get_first_downloaded_file_id(current_item) {
+                return HttpResponse::SeeOther()
+                    .append_header(("Location", format!("/{}/{}/oldest/slideshow/{}/{}", site_prefix, rendering_prefix, i, encode(&first_file_id))))
+                    .finish();
+            } else {
+                return HttpResponse::NotFound().body("No file found for item");
+            }
+        }
+    };
+
+    let is_full = query.view.as_deref() == Some("full");
+    let config = ListingPageConfig {
+        mode: ListingPageMode::All,
+        ordering: ListingPageOrdering::OldestFirst,
+        page: 1,
+        per_page: 15,
+        total: ordered_items.len(),
+    };
+    
+    // Construct PageUrlState directly from handler context
+    let url_state = PageUrlState::slideshow(
+        site_prefix.clone(),
+        rendering_prefix.to_string(),
+        &config,
+        i,
+        decoded_file_id.clone(),
+        if is_full { ViewMode::Full } else { ViewMode::Normal },
+    );
+    let back_url = url_state.with_view_mode(ViewMode::Normal).to_url();
+    
+    // For prev/next URLs, we need to get the first file of those items
+    let prev_url = prev_index.and_then(|idx| {
+        let prev_item = ordered_items.get(idx - 1)?;
+        let prev_file_id = super::common::get_first_downloaded_file_id(prev_item)?;
+        Some(PageUrlState::slideshow(
+            site_prefix.clone(),
+            rendering_prefix.to_string(),
+            &config,
+            idx,
+            prev_file_id,
+            if is_full { ViewMode::Full } else { ViewMode::Normal },
+        ).to_url())
+    });
+    let next_url = next_index.and_then(|idx| {
+        let next_item = ordered_items.get(idx - 1)?;
+        let next_file_id = super::common::get_first_downloaded_file_id(next_item)?;
+        Some(PageUrlState::slideshow(
+            site_prefix.clone(),
+            rendering_prefix.to_string(),
+            &config,
+            idx,
+            next_file_id,
+            if is_full { ViewMode::Full } else { ViewMode::Normal },
+        ).to_url())
+    });
+
+    let markup = if is_full {
+        renderer.render_slideshow_full_page(
+            &site_prefix,
+            current_item,
+            &file,
+            &url_state,
+            prev_url.as_deref(),
+            next_url.as_deref(),
+            &back_url,
+        )
+    } else {
+        renderer.render_slideshow_detail_page(
+            &site_prefix,
+            current_item,
+            &file,
+            &url_state,
+            prev_url.as_deref(),
+            next_url.as_deref(),
+        )
+    };
+    HttpResponse::Ok().body(markup.0)
+}
+
+#[get("/search/{query}/slideshow/{i}")]
+pub async fn generic_search_slideshow_redirect_handler(
+    renderer: web::Data<SiteRendererType>,
+    site_source: web::Data<SiteSource>,
+    path: web::Path<(String, usize)>,
+) -> impl Responder {
+    let (encoded_query, i) = path.into_inner();
+    let renderer = renderer.into_inner();
+    let site_prefix = site_source.slug();
+    let rendering_prefix = renderer.get_prefix();
+    
+    // Decode the query
+    let decoded_query = match decode(&encoded_query) {
+        Ok(decoded) => decoded.to_string(),
+        Err(_) => {
+            return HttpResponse::BadRequest().body("Invalid URL encoding in search query");
+        }
+    };
+
+    // Parse the s-expression
+    let expr = match parse_search_expr(&decoded_query) {
+        Ok(expr) => expr,
+        Err(e) => {
+            return HttpResponse::BadRequest().body(format!("Parse error: {}", e));
+        }
+    };
+
+    // Get all items and filter
+    let all_items: Vec<CrawlItem> = site_source.all_items();
+    let filtered_items: Vec<CrawlItem> = all_items
+        .into_iter()
+        .filter(|item| evaluate_search_expr(&expr, item))
+        .collect();
+
+    // Sort by source_published (newest first)
+    let mut sorted_items = filtered_items;
+    sorted_items.sort_by_key(|item| -item.source_published);
+    
+    if sorted_items.is_empty() || i == 0 || i > sorted_items.len() {
+        return HttpResponse::NotFound().body("No items found");
+    }
+    
+    let current_item = &sorted_items[i - 1];
+    let file_id = current_item
+        .flat_files()
+        .into_iter()
+        .filter(|(_, file)| file.is_downloaded())
+        .collect::<IndexMap<String, FileCrawlType>>()
+        .keys()
+        .next()
+        .cloned();
+    
+    if let Some(file_id) = file_id {
+        HttpResponse::SeeOther()
+            .append_header(("Location", format!("/{}/{}/search/{}/slideshow/{}/{}", site_prefix, rendering_prefix, encoded_query, i, encode(&file_id))))
+            .finish()
+    } else {
+        HttpResponse::NotFound().body("No file found for item")
+    }
+}
+
+#[get("/search/{query}/slideshow/{i}/{file_id}")]
+pub async fn generic_search_slideshow_handler(
+    renderer: web::Data<SiteRendererType>,
+    site_source: web::Data<SiteSource>,
+    path: web::Path<(String, usize, String)>,
+    query: web::Query<ViewModeQuery>,
+) -> impl Responder {
+    let (encoded_query, i, file_id_param) = path.into_inner();
+    let renderer = renderer.into_inner();
+    let site_prefix = site_source.slug();
+    let rendering_prefix = renderer.get_prefix();
+
+    if i == 0 {
+        return HttpResponse::SeeOther()
+            .append_header(("Location", format!("/{}/{}/search/{}/slideshow/1", site_prefix, rendering_prefix, encoded_query)))
+            .finish();
+    }
+
+    if i == 0 {
+        return HttpResponse::SeeOther()
+            .append_header(("Location", format!("/{}/{}/search/{}/slideshow/1", site_prefix, rendering_prefix, encoded_query)))
+            .finish();
+    }
+
+    // Decode the query
+    let decoded_query = match decode(&encoded_query) {
+        Ok(decoded) => decoded.to_string(),
+        Err(_) => {
+            return HttpResponse::BadRequest().body("Invalid URL encoding in search query");
+        }
+    };
+
+    // Parse the s-expression
+    let expr = match parse_search_expr(&decoded_query) {
+        Ok(expr) => expr,
+        Err(e) => {
+            return HttpResponse::BadRequest().body(format!("Parse error: {}", e));
+        }
+    };
+
+    // Get all items and filter
+    let all_items: Vec<CrawlItem> = site_source.all_items();
+    let filtered_items: Vec<CrawlItem> = all_items
+        .into_iter()
+        .filter(|item| evaluate_search_expr(&expr, item))
+        .collect();
+
+    // Sort by source_published (newest first)
+    let mut sorted_items = filtered_items;
+    sorted_items.sort_by_key(|item| -item.source_published);
+
+    if sorted_items.is_empty() {
+        return HttpResponse::NotFound().body("No items found");
+    }
+
+    if i > sorted_items.len() {
+        return HttpResponse::SeeOther()
+            .append_header(("Location", format!("/{}/{}/search/{}/slideshow/{}", site_prefix, rendering_prefix, encoded_query, sorted_items.len())))
+            .finish();
+    }
+
+    let current_item = &sorted_items[i - 1];
+    let prev_index = if i > 1 { Some(i - 1) } else { None };
+    let next_index = if i < sorted_items.len() { Some(i + 1) } else { None };
+
+    // Decode file_id from URL
+    let decoded_file_id = match decode(&file_id_param) {
+        Ok(decoded) => decoded.to_string(),
+        Err(_) => {
+            return HttpResponse::BadRequest().body("Invalid file ID encoding");
+        }
+    };
+
+    // Verify the file exists in the item
+    let file = match current_item.flat_files().get(&decoded_file_id) {
+        Some(f) if f.is_downloaded() => f.clone(),
+        _ => {
+            // File not found or not downloaded, redirect to first file
+            if let Some(first_file_id) = super::common::get_first_downloaded_file_id(current_item) {
+                return HttpResponse::SeeOther()
+                    .append_header(("Location", format!("/{}/{}/search/{}/slideshow/{}/{}", site_prefix, rendering_prefix, encoded_query, i, encode(&first_file_id))))
+                    .finish();
+            } else {
+                return HttpResponse::NotFound().body("No file found for item");
+            }
+        }
+    };
+
+    let is_full = query.view.as_deref() == Some("full");
+    let config = ListingPageConfig {
+        mode: ListingPageMode::Search {
+            query: encoded_query.clone(),
+        },
+        ordering: ListingPageOrdering::NewestFirst,
+        page: 1,
+        per_page: 15,
+        total: sorted_items.len(),
+    };
+    
+    // Construct PageUrlState directly from handler context
+    let url_state = PageUrlState::slideshow(
+        site_prefix.clone(),
+        rendering_prefix.to_string(),
+        &config,
+        i,
+        decoded_file_id.clone(),
+        if is_full { ViewMode::Full } else { ViewMode::Normal },
+    );
+    let back_url = url_state.with_view_mode(ViewMode::Normal).to_url();
+    
+    // For prev/next URLs, we need to get the first file of those items
+    let prev_url = prev_index.and_then(|idx| {
+        let prev_item = sorted_items.get(idx - 1)?;
+        let prev_file_id = prev_item
+            .flat_files()
+            .into_iter()
+            .filter(|(_, file)| file.is_downloaded())
+            .collect::<IndexMap<String, FileCrawlType>>()
+            .keys()
+            .next()?
+            .clone();
+        Some(PageUrlState::slideshow(
+            site_prefix.clone(),
+            rendering_prefix.to_string(),
+            &config,
+            idx,
+            prev_file_id.clone(),
+            if is_full { ViewMode::Full } else { ViewMode::Normal },
+        ).to_url())
+    });
+    let next_url = next_index.and_then(|idx| {
+        let next_item = sorted_items.get(idx - 1)?;
+        let next_file_id = next_item
+            .flat_files()
+            .into_iter()
+            .filter(|(_, file)| file.is_downloaded())
+            .collect::<IndexMap<String, FileCrawlType>>()
+            .keys()
+            .next()?
+            .clone();
+        Some(PageUrlState::slideshow(
+            site_prefix.clone(),
+            rendering_prefix.to_string(),
+            &config,
+            idx,
+            next_file_id.clone(),
+            if is_full { ViewMode::Full } else { ViewMode::Normal },
+        ).to_url())
+    });
+
+    let markup = if is_full {
+        renderer.render_slideshow_full_page(
+            &site_prefix,
+            current_item,
+            &file,
+            &url_state,
+            prev_url.as_deref(),
+            next_url.as_deref(),
+            &back_url,
+        )
+    } else {
+        renderer.render_slideshow_detail_page(
+            &site_prefix,
+            current_item,
+            &file,
+            &url_state,
+            prev_url.as_deref(),
+            next_url.as_deref(),
+        )
+    };
+    HttpResponse::Ok().body(markup.0)
+}
+
+#[get("/random/slideshow/{i}")]
+pub async fn generic_random_slideshow_redirect_handler(
+    renderer: web::Data<SiteRendererType>,
+    site_source: web::Data<SiteSource>,
+    index: web::Path<usize>,
+) -> impl Responder {
+    let renderer = renderer.into_inner();
+    let site_prefix = site_source.slug();
+    let rendering_prefix = renderer.get_prefix();
+    let i = index.into_inner();
+    
+    let items = resolve_listing_page(&site_source, &ListingPageMode::All);
+    let ordered_items = apply_ordering(&items, &ListingPageOrdering::Random);
+    
+    if ordered_items.is_empty() || i == 0 || i > ordered_items.len() {
+        return HttpResponse::NotFound().body("No items found");
+    }
+    
+    let current_item = &ordered_items[i - 1];
+    let file_id = super::common::get_first_downloaded_file_id(current_item);
+    
+    if let Some(file_id) = file_id {
+        HttpResponse::SeeOther()
+            .append_header(("Location", format!("/{}/{}/random/slideshow/{}/{}", site_prefix, rendering_prefix, i, encode(&file_id))))
+            .finish()
+    } else {
+        HttpResponse::NotFound().body("No file found for item")
+    }
+}
+
+#[get("/random/slideshow/{i}/{file_id}")]
+pub async fn generic_random_slideshow_handler(
+    renderer: web::Data<SiteRendererType>,
+    site_source: web::Data<SiteSource>,
+    path: web::Path<(usize, String)>,
+    query: web::Query<ViewModeQuery>,
+) -> impl Responder {
+    let (i, file_id_param) = path.into_inner();
+    let renderer = renderer.into_inner();
+    let site_prefix = site_source.slug();
+    let rendering_prefix = renderer.get_prefix();
+
+    if i == 0 {
+        return HttpResponse::SeeOther()
+            .append_header(("Location", format!("/{}/{}/random/slideshow/1", site_prefix, rendering_prefix)))
+            .finish();
+    }
+
+    let items = resolve_listing_page(&site_source, &ListingPageMode::All);
+    let ordered_items = apply_ordering(&items, &ListingPageOrdering::Random);
+
+    if ordered_items.is_empty() {
+        return HttpResponse::NotFound().body("No items found");
+    }
+
+    if i > ordered_items.len() {
+        return HttpResponse::SeeOther()
+            .append_header(("Location", format!("/{}/{}/random/slideshow/{}", site_prefix, rendering_prefix, ordered_items.len())))
+            .finish();
+    }
+
+    let current_item = &ordered_items[i - 1];
+    let prev_index = if i > 1 { Some(i - 1) } else { None };
+    let next_index = if i < ordered_items.len() { Some(i + 1) } else { None };
+
+    // Decode file_id from URL
+    let decoded_file_id = match decode(&file_id_param) {
+        Ok(decoded) => decoded.to_string(),
+        Err(_) => {
+            return HttpResponse::BadRequest().body("Invalid file ID encoding");
+        }
+    };
+
+    // Verify the file exists in the item
+    let file = match current_item.flat_files().get(&decoded_file_id) {
+        Some(f) if f.is_downloaded() => f.clone(),
+        _ => {
+            // File not found or not downloaded, redirect to first file
+            if let Some(first_file_id) = super::common::get_first_downloaded_file_id(current_item) {
+                return HttpResponse::SeeOther()
+                    .append_header(("Location", format!("/{}/{}/random/slideshow/{}/{}", site_prefix, rendering_prefix, i, encode(&first_file_id))))
+                    .finish();
+            } else {
+                return HttpResponse::NotFound().body("No file found for item");
+            }
+        }
+    };
+
+    let is_full = query.view.as_deref() == Some("full");
+    let config = ListingPageConfig {
+        mode: ListingPageMode::All,
+        ordering: ListingPageOrdering::Random,
+        page: 1,
+        per_page: 15,
+        total: ordered_items.len(),
+    };
+    
+    // Construct PageUrlState directly from handler context
+    let url_state = PageUrlState::slideshow(
+        site_prefix.clone(),
+        rendering_prefix.to_string(),
+        &config,
+        i,
+        decoded_file_id.clone(),
+        if is_full { ViewMode::Full } else { ViewMode::Normal },
+    );
+    let back_url = url_state.with_view_mode(ViewMode::Normal).to_url();
+    
+    // For prev/next URLs, we need to get the first file of those items
+    let prev_url = prev_index.and_then(|idx| {
+        let prev_item = ordered_items.get(idx - 1)?;
+        let prev_file_id = super::common::get_first_downloaded_file_id(prev_item)?;
+        Some(PageUrlState::slideshow(
+            site_prefix.clone(),
+            rendering_prefix.to_string(),
+            &config,
+            idx,
+            prev_file_id,
+            if is_full { ViewMode::Full } else { ViewMode::Normal },
+        ).to_url())
+    });
+    let next_url = next_index.and_then(|idx| {
+        let next_item = ordered_items.get(idx - 1)?;
+        let next_file_id = super::common::get_first_downloaded_file_id(next_item)?;
+        Some(PageUrlState::slideshow(
+            site_prefix.clone(),
+            rendering_prefix.to_string(),
+            &config,
+            idx,
+            next_file_id,
+            if is_full { ViewMode::Full } else { ViewMode::Normal },
+        ).to_url())
+    });
+
+    let markup = if is_full {
+        renderer.render_slideshow_full_page(
+            &site_prefix,
+            current_item,
+            &file,
+            &url_state,
+            prev_url.as_deref(),
+            next_url.as_deref(),
+            &back_url,
+        )
+    } else {
+        renderer.render_slideshow_detail_page(
+            &site_prefix,
+            current_item,
+            &file,
+            &url_state,
+            prev_url.as_deref(),
+            next_url.as_deref(),
+        )
+    };
+    HttpResponse::Ok().body(markup.0)
+}
+
+#[get("/tag/{tag}/slideshow/{i}")]
+pub async fn generic_tag_slideshow_redirect_handler(
+    renderer: web::Data<SiteRendererType>,
+    site_source: web::Data<SiteSource>,
+    path: web::Path<(String, usize)>,
+) -> impl Responder {
+    let (tag, i) = path.into_inner();
+    let renderer = renderer.into_inner();
+    let site_prefix = site_source.slug();
+    let rendering_prefix = renderer.get_prefix();
+    
+    let items = resolve_listing_page(&site_source, &ListingPageMode::ByTag { tag: tag.clone() });
+    let ordered_items = apply_ordering(&items, &ListingPageOrdering::NewestFirst);
+    
+    if ordered_items.is_empty() || i == 0 || i > ordered_items.len() {
+        return HttpResponse::NotFound().body("No items found");
+    }
+    
+    let current_item = &ordered_items[i - 1];
+    let file_id = super::common::get_first_downloaded_file_id(current_item);
+    
+    if let Some(file_id) = file_id {
+        HttpResponse::SeeOther()
+            .append_header(("Location", format!("/{}/{}/tag/{}/slideshow/{}/{}", site_prefix, rendering_prefix, encode(&tag), i, encode(&file_id))))
+            .finish()
+    } else {
+        HttpResponse::NotFound().body("No file found for item")
+    }
+}
+
+#[get("/tag/{tag}/slideshow/{i}/{file_id}")]
+pub async fn generic_tag_slideshow_handler(
+    renderer: web::Data<SiteRendererType>,
+    site_source: web::Data<SiteSource>,
+    path: web::Path<(String, usize, String)>,
+    query: web::Query<ViewModeQuery>,
+) -> impl Responder {
+    let (tag, i, file_id_param) = path.into_inner();
+    let renderer = renderer.into_inner();
+    let site_prefix = site_source.slug();
+    let rendering_prefix = renderer.get_prefix();
+
+    if i == 0 {
+        return HttpResponse::SeeOther()
+            .append_header(("Location", format!("/{}/{}/tag/{}/slideshow/1", site_prefix, rendering_prefix, encode(&tag))))
+            .finish();
+    }
+
+    let items = resolve_listing_page(&site_source, &ListingPageMode::ByTag { tag: tag.clone() });
+    let ordered_items = apply_ordering(&items, &ListingPageOrdering::NewestFirst);
+
+    if ordered_items.is_empty() {
+        return HttpResponse::NotFound().body("No items found");
+    }
+
+    if i > ordered_items.len() {
+        return HttpResponse::SeeOther()
+            .append_header(("Location", format!("/{}/{}/tag/{}/slideshow/{}", site_prefix, rendering_prefix, encode(&tag), ordered_items.len())))
+            .finish();
+    }
+
+    let current_item = &ordered_items[i - 1];
+    let prev_index = if i > 1 { Some(i - 1) } else { None };
+    let next_index = if i < ordered_items.len() { Some(i + 1) } else { None };
+
+    // Decode file_id from URL
+    let decoded_file_id = match decode(&file_id_param) {
+        Ok(decoded) => decoded.to_string(),
+        Err(_) => {
+            return HttpResponse::BadRequest().body("Invalid file ID encoding");
+        }
+    };
+
+    // Verify the file exists in the item
+    let file = match current_item.flat_files().get(&decoded_file_id) {
+        Some(f) if f.is_downloaded() => f.clone(),
+        _ => {
+            // File not found or not downloaded, redirect to first file
+            if let Some(first_file_id) = super::common::get_first_downloaded_file_id(current_item) {
+                return HttpResponse::SeeOther()
+                    .append_header(("Location", format!("/{}/{}/tag/{}/slideshow/{}/{}", site_prefix, rendering_prefix, encode(&tag), i, encode(&first_file_id))))
+                    .finish();
+            } else {
+                return HttpResponse::NotFound().body("No file found for item");
+            }
+        }
+    };
+
+    let is_full = query.view.as_deref() == Some("full");
+    let config = ListingPageConfig {
+        mode: ListingPageMode::ByTag { tag: tag.clone() },
+        ordering: ListingPageOrdering::NewestFirst,
+        page: 1,
+        per_page: 15,
+        total: ordered_items.len(),
+    };
+    
+    // Construct PageUrlState directly from handler context
+    let url_state = PageUrlState::slideshow(
+        site_prefix.clone(),
+        rendering_prefix.to_string(),
+        &config,
+        i,
+        decoded_file_id.clone(),
+        if is_full { ViewMode::Full } else { ViewMode::Normal },
+    );
+    let back_url = url_state.with_view_mode(ViewMode::Normal).to_url();
+    
+    // For prev/next URLs, we need to get the first file of those items
+    let prev_url = prev_index.and_then(|idx| {
+        let prev_item = ordered_items.get(idx - 1)?;
+        let prev_file_id = super::common::get_first_downloaded_file_id(prev_item)?;
+        Some(PageUrlState::slideshow(
+            site_prefix.clone(),
+            rendering_prefix.to_string(),
+            &config,
+            idx,
+            prev_file_id,
+            if is_full { ViewMode::Full } else { ViewMode::Normal },
+        ).to_url())
+    });
+    let next_url = next_index.and_then(|idx| {
+        let next_item = ordered_items.get(idx - 1)?;
+        let next_file_id = super::common::get_first_downloaded_file_id(next_item)?;
+        Some(PageUrlState::slideshow(
+            site_prefix.clone(),
+            rendering_prefix.to_string(),
+            &config,
+            idx,
+            next_file_id,
+            if is_full { ViewMode::Full } else { ViewMode::Normal },
+        ).to_url())
+    });
+
+    let markup = if is_full {
+        renderer.render_slideshow_full_page(
+            &site_prefix,
+            current_item,
+            &file,
+            &url_state,
+            prev_url.as_deref(),
+            next_url.as_deref(),
+            &back_url,
+        )
+    } else {
+        renderer.render_slideshow_detail_page(
+            &site_prefix,
+            current_item,
+            &file,
+            &url_state,
+            prev_url.as_deref(),
+            next_url.as_deref(),
+        )
+    };
+    HttpResponse::Ok().body(markup.0)
+}
+
+#[get("/archive/{year}/{month}/slideshow/{i}")]
+pub async fn generic_archive_slideshow_redirect_handler(
+    renderer: web::Data<SiteRendererType>,
+    site_source: web::Data<SiteSource>,
+    path: web::Path<(usize, usize, usize)>,
+) -> impl Responder {
+    let (year, month, i) = path.into_inner();
+    let renderer = renderer.into_inner();
+    let site_prefix = site_source.slug();
+    let rendering_prefix = renderer.get_prefix();
+    
+    let items = resolve_listing_page(
+        &site_source,
+        &ListingPageMode::ByMonth {
+            year: year as u32,
+            month: month as u32,
+        },
+    );
+    let ordered_items = apply_ordering(&items, &ListingPageOrdering::NewestFirst);
+    
+    if ordered_items.is_empty() || i == 0 || i > ordered_items.len() {
+        return HttpResponse::NotFound().body("No items found");
+    }
+    
+    let current_item = &ordered_items[i - 1];
+    let file_id = super::common::get_first_downloaded_file_id(current_item);
+    
+    if let Some(file_id) = file_id {
+        HttpResponse::SeeOther()
+            .append_header(("Location", format!("/{}/{}/archive/{}/{}/slideshow/{}/{}", site_prefix, rendering_prefix, year, month, i, encode(&file_id))))
+            .finish()
+    } else {
+        HttpResponse::NotFound().body("No file found for item")
+    }
+}
+
+#[get("/archive/{year}/{month}/slideshow/{i}/{file_id}")]
+pub async fn generic_archive_slideshow_handler(
+    renderer: web::Data<SiteRendererType>,
+    site_source: web::Data<SiteSource>,
+    path: web::Path<(usize, usize, usize, String)>,
+    query: web::Query<ViewModeQuery>,
+) -> impl Responder {
+    let (year, month, i, file_id_param) = path.into_inner();
+    let renderer = renderer.into_inner();
+    let site_prefix = site_source.slug();
+    let rendering_prefix = renderer.get_prefix();
+
+    if i == 0 {
+        return HttpResponse::SeeOther()
+            .append_header(("Location", format!("/{}/{}/archive/{}/{}/slideshow/1", site_prefix, rendering_prefix, year, month)))
+            .finish();
+    }
+
+    let items = resolve_listing_page(
+        &site_source,
+        &ListingPageMode::ByMonth {
+            year: year as u32,
+            month: month as u32,
+        },
+    );
+    let ordered_items = apply_ordering(&items, &ListingPageOrdering::NewestFirst);
+
+    if ordered_items.is_empty() {
+        return HttpResponse::NotFound().body("No items found");
+    }
+
+    if i > ordered_items.len() {
+        return HttpResponse::SeeOther()
+            .append_header(("Location", format!("/{}/{}/archive/{}/{}/slideshow/{}", site_prefix, rendering_prefix, year, month, ordered_items.len())))
+            .finish();
+    }
+
+    let current_item = &ordered_items[i - 1];
+    let prev_index = if i > 1 { Some(i - 1) } else { None };
+    let next_index = if i < ordered_items.len() { Some(i + 1) } else { None };
+
+    // Decode file_id from URL
+    let decoded_file_id = match decode(&file_id_param) {
+        Ok(decoded) => decoded.to_string(),
+        Err(_) => {
+            return HttpResponse::BadRequest().body("Invalid file ID encoding");
+        }
+    };
+
+    // Verify the file exists in the item
+    let file = match current_item.flat_files().get(&decoded_file_id) {
+        Some(f) if f.is_downloaded() => f.clone(),
+        _ => {
+            // File not found or not downloaded, redirect to first file
+            if let Some(first_file_id) = super::common::get_first_downloaded_file_id(current_item) {
+                return HttpResponse::SeeOther()
+                    .append_header(("Location", format!("/{}/{}/archive/{}/{}/slideshow/{}/{}", site_prefix, rendering_prefix, year, month, i, encode(&first_file_id))))
+                    .finish();
+            } else {
+                return HttpResponse::NotFound().body("No file found for item");
+            }
+        }
+    };
+
+    let is_full = query.view.as_deref() == Some("full");
+    let config = ListingPageConfig {
+        mode: ListingPageMode::ByMonth {
+            year: year as u32,
+            month: month as u32,
+        },
+        ordering: ListingPageOrdering::NewestFirst,
+        page: 1,
+        per_page: 15,
+        total: ordered_items.len(),
+    };
+    
+    // Construct PageUrlState directly from handler context
+    let url_state = PageUrlState::slideshow(
+        site_prefix.clone(),
+        rendering_prefix.to_string(),
+        &config,
+        i,
+        decoded_file_id.clone(),
+        if is_full { ViewMode::Full } else { ViewMode::Normal },
+    );
+    let back_url = url_state.with_view_mode(ViewMode::Normal).to_url();
+    
+    // For prev/next URLs, we need to get the first file of those items
+    let prev_url = prev_index.and_then(|idx| {
+        let prev_item = ordered_items.get(idx - 1)?;
+        let prev_file_id = super::common::get_first_downloaded_file_id(prev_item)?;
+        Some(PageUrlState::slideshow(
+            site_prefix.clone(),
+            rendering_prefix.to_string(),
+            &config,
+            idx,
+            prev_file_id,
+            if is_full { ViewMode::Full } else { ViewMode::Normal },
+        ).to_url())
+    });
+    let next_url = next_index.and_then(|idx| {
+        let next_item = ordered_items.get(idx - 1)?;
+        let next_file_id = super::common::get_first_downloaded_file_id(next_item)?;
+        Some(PageUrlState::slideshow(
+            site_prefix.clone(),
+            rendering_prefix.to_string(),
+            &config,
+            idx,
+            next_file_id,
+            if is_full { ViewMode::Full } else { ViewMode::Normal },
+        ).to_url())
+    });
+
+    let markup = if is_full {
+        renderer.render_slideshow_full_page(
+            &site_prefix,
+            current_item,
+            &file,
+            &url_state,
+            prev_url.as_deref(),
+            next_url.as_deref(),
+            &back_url,
+        )
+    } else {
+        renderer.render_slideshow_detail_page(
+            &site_prefix,
+            current_item,
+            &file,
+            &url_state,
+            prev_url.as_deref(),
+            next_url.as_deref(),
+        )
+    };
+    HttpResponse::Ok().body(markup.0)
 }

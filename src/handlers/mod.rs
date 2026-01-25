@@ -9,11 +9,13 @@ mod common;
 mod generic;
 mod reddit;
 mod search;
+mod url_state;
 
 pub use common::*;
 pub use generic::*;
 pub use reddit::media_viewer_fragment_handler;
 pub use search::{search_form_handler, search_results_handler};
+pub use url_state::{PageUrlState, PageType, ViewMode};
 
 use crate::site::{CrawlItem, FileCrawlType};
 
@@ -63,8 +65,10 @@ impl ExtensionFix for std::string::String {
 
 pub const PRERENDER_RULES: &str = r#"{
     "prerender": [
-        { "where": { "selector_matches": "a[data-is-next]" }, "eagerness": "immediate" },
-        { "where": { "selector_matches": "a[data-is-prev]" }, "eagerness": "eager" }
+        { "where": { "selector_matches": "a[data-file-next]" }, "eagerness": "immediate" },
+        { "where": { "selector_matches": "a[data-file-prev]" }, "eagerness": "eager" },
+        { "where": { "selector_matches": "a[data-item-next]" }, "eagerness": "immediate" },
+        { "where": { "selector_matches": "a[data-item-prev]" }, "eagerness": "eager" }
     ]
 }"#;
 
@@ -153,6 +157,18 @@ pub fn scripts() -> Markup {
 }
 
 pub fn header(site_prefix: &str, rendering_prefix: &str, current_route: &str) -> Markup {
+    // Remove the current rendering prefix from the route and replace with target prefix
+    let replace_rendering_prefix = |target_prefix: &str| -> String {
+        // current_route is like "/r/latest/slideshow/1/file.jpg" or "/r/item/123/file.jpg"
+        // We need to replace "/r/" with "/{target_prefix}/"
+        if let Some(stripped) = current_route.strip_prefix(&format!("/{}/", rendering_prefix)) {
+            format!("/{}/{}", target_prefix, stripped)
+        } else {
+            // Fallback: just prepend the target prefix
+            format!("/{}{}", target_prefix, current_route)
+        }
+    };
+    
     html! {
         header.page-header {
             nav {
@@ -160,13 +176,13 @@ pub fn header(site_prefix: &str, rendering_prefix: &str, current_route: &str) ->
                     a href="/" { (site_prefix) }
                 }
                 span .rendering-mode .active[rendering_prefix == "booru"] {
-                    a href=(format!("/{}/booru{}", site_prefix, current_route)) { "Booru"}
+                    a href=(format!("/{}{}", site_prefix, replace_rendering_prefix("booru"))) { "Booru"}
                 }
                 span .rendering-mode .active[rendering_prefix == "blog"] {
-                    a href=(format!("/{}/blog{}", site_prefix, current_route)) { "Blog"}
+                    a href=(format!("/{}{}", site_prefix, replace_rendering_prefix("blog"))) { "Blog"}
                 }
                 span .rendering-mode .active[rendering_prefix == "r"] {
-                    a href=(format!("/{}/r{}", site_prefix, current_route)) { "Reddit"}
+                    a href=(format!("/{}{}", site_prefix, replace_rendering_prefix("r"))) { "Reddit"}
                 }
             }
             nav.sub-nav {
@@ -363,6 +379,7 @@ impl SiteSource {
     }
 }
 
+#[derive(Clone, Debug)]
 pub enum ListingPageMode {
     All,
     ByTag { tag: String },
@@ -370,6 +387,7 @@ pub enum ListingPageMode {
     Search { query: String },
 }
 
+#[derive(Clone, Debug)]
 pub enum ListingPageOrdering {
     NewestFirst,
     OldestFirst,
@@ -418,6 +436,12 @@ impl PaginatorPrefix for ListingPageConfig {
     }
 }
 
+
+/// Calculate the global 1-indexed position of an item in a listing page
+pub fn calculate_item_index(config: &ListingPageConfig, position_in_page: usize) -> usize {
+    (config.page - 1) * config.per_page + position_in_page + 1
+}
+
 #[derive(Clone, Copy)]
 pub enum SiteRendererType {
     Blog,
@@ -438,7 +462,7 @@ pub trait SiteRenderer {
         site_prefix: &str,
         item: &CrawlItem,
         file: &FileCrawlType,
-        route: &str,
+        url_state: &PageUrlState,
     ) -> Markup;
     fn render_tags_page(
         &self,
@@ -458,7 +482,26 @@ pub trait SiteRenderer {
         site_prefix: &str,
         item: &CrawlItem,
         file: &FileCrawlType,
-        route: &str,
+        url_state: &PageUrlState,
+    ) -> Markup;
+    fn render_slideshow_detail_page(
+        &self,
+        site_prefix: &str,
+        item: &CrawlItem,
+        file: &FileCrawlType,
+        url_state: &PageUrlState,
+        prev_url: Option<&str>,
+        next_url: Option<&str>,
+    ) -> Markup;
+    fn render_slideshow_full_page(
+        &self,
+        site_prefix: &str,
+        item: &CrawlItem,
+        file: &FileCrawlType,
+        url_state: &PageUrlState,
+        prev_url: Option<&str>,
+        next_url: Option<&str>,
+        back_url: &str,
     ) -> Markup;
     fn get_prefix(&self) -> &str;
 }
@@ -487,12 +530,12 @@ impl SiteRenderer for SiteRendererType {
         site_prefix: &str,
         item: &CrawlItem,
         file: &FileCrawlType,
-        route: &str,
+        url_state: &PageUrlState,
     ) -> Markup {
         match self {
-            SiteRendererType::Blog => blog::render_detail_page(site_prefix, item, file, route),
-            SiteRendererType::Booru => booru::render_detail_page(site_prefix, item, file, route),
-            SiteRendererType::Reddit => reddit::render_detail_page(site_prefix, item, file, route),
+            SiteRendererType::Blog => blog::render_detail_page(site_prefix, item, file, url_state),
+            SiteRendererType::Booru => booru::render_detail_page(site_prefix, item, file, url_state),
+            SiteRendererType::Reddit => reddit::render_detail_page(site_prefix, item, file, url_state),
         }
     }
 
@@ -530,13 +573,58 @@ impl SiteRenderer for SiteRendererType {
         site_prefix: &str,
         item: &CrawlItem,
         file: &FileCrawlType,
-        route: &str,
+        url_state: &PageUrlState,
     ) -> Markup {
         match self {
-            SiteRendererType::Blog => blog::render_detail_page(site_prefix, item, file, route),
-            SiteRendererType::Booru => booru::render_detail_page(site_prefix, item, file, route),
+            SiteRendererType::Blog => blog::render_detail_page(site_prefix, item, file, url_state),
+            SiteRendererType::Booru => booru::render_detail_page(site_prefix, item, file, url_state),
             SiteRendererType::Reddit => {
-                reddit::render_detail_full_page(site_prefix, item, file, route)
+                reddit::render_detail_full_page(site_prefix, item, file, url_state)
+            }
+        }
+    }
+
+    fn render_slideshow_detail_page(
+        &self,
+        site_prefix: &str,
+        item: &CrawlItem,
+        file: &FileCrawlType,
+        url_state: &PageUrlState,
+        prev_url: Option<&str>,
+        next_url: Option<&str>,
+    ) -> Markup {
+        match self {
+            SiteRendererType::Blog => {
+                blog::render_slideshow_detail_page(site_prefix, item, file, url_state, prev_url, next_url)
+            }
+            SiteRendererType::Booru => {
+                booru::render_slideshow_detail_page(site_prefix, item, file, url_state, prev_url, next_url)
+            }
+            SiteRendererType::Reddit => {
+                reddit::render_slideshow_detail_page(site_prefix, item, file, url_state, prev_url, next_url)
+            }
+        }
+    }
+
+    fn render_slideshow_full_page(
+        &self,
+        site_prefix: &str,
+        item: &CrawlItem,
+        file: &FileCrawlType,
+        url_state: &PageUrlState,
+        prev_url: Option<&str>,
+        next_url: Option<&str>,
+        back_url: &str,
+    ) -> Markup {
+        match self {
+            SiteRendererType::Blog => {
+                blog::render_slideshow_full_page(site_prefix, item, file, url_state, prev_url, next_url, back_url)
+            }
+            SiteRendererType::Booru => {
+                booru::render_slideshow_full_page(site_prefix, item, file, url_state, prev_url, next_url, back_url)
+            }
+            SiteRendererType::Reddit => {
+                reddit::render_slideshow_full_page(site_prefix, item, file, url_state, prev_url, next_url, back_url)
             }
         }
     }

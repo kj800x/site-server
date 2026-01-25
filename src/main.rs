@@ -20,10 +20,17 @@ use site_server::{
     errors,
     handlers::{
         self, generic_archive_index_handler, generic_archive_page_handler,
-        generic_detail_full_handler, generic_detail_handler, generic_detail_redirect,
-        generic_index_handler, generic_index_root_handler, generic_latest_handler,
-        generic_latest_page_handler, generic_oldest_handler, generic_oldest_page_handler,
-        generic_random_handler, generic_tag_handler, generic_tag_page_handler,
+        generic_archive_slideshow_handler, generic_archive_slideshow_redirect_handler,
+        generic_latest_slideshow_redirect_handler, generic_oldest_slideshow_redirect_handler,
+        generic_random_slideshow_redirect_handler, generic_tag_slideshow_redirect_handler,
+        generic_search_slideshow_redirect_handler, generic_detail_handler, generic_detail_redirect,
+        generic_index_handler,
+        generic_index_root_handler, generic_latest_handler, generic_latest_page_handler,
+        generic_latest_slideshow_handler, generic_oldest_handler,
+        generic_oldest_page_handler, generic_oldest_slideshow_handler,
+        generic_random_handler, generic_random_slideshow_handler,
+        generic_search_slideshow_handler, generic_tag_handler,
+        generic_tag_page_handler, generic_tag_slideshow_handler,
         generic_tags_index_handler, media_viewer_fragment_handler, search_form_handler,
         search_results_handler, serve_crawled_json, SiteRenderer, SiteSource,
     },
@@ -294,9 +301,20 @@ async fn run() -> errors::Result<()> {
                                 .service(generic_archive_index_handler)
                                 .service(search_form_handler)
                                 .service(search_results_handler)
+                                .service(generic_latest_slideshow_redirect_handler)
+                                .service(generic_latest_slideshow_handler)
+                                .service(generic_oldest_slideshow_redirect_handler)
+                                .service(generic_oldest_slideshow_handler)
+                                .service(generic_random_slideshow_redirect_handler)
+                                .service(generic_random_slideshow_handler)
+                                .service(generic_tag_slideshow_redirect_handler)
+                                .service(generic_tag_slideshow_handler)
+                                .service(generic_archive_slideshow_redirect_handler)
+                                .service(generic_archive_slideshow_handler)
+                                .service(generic_search_slideshow_redirect_handler)
+                                .service(generic_search_slideshow_handler)
                                 .service(generic_detail_handler)
                                 .service(generic_detail_redirect)
-                                .service(generic_detail_full_handler)
                                 .service(media_viewer_fragment_handler),
                         );
                     }

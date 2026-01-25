@@ -3,23 +3,34 @@ use maud::{html, Markup};
 use std::collections::HashMap;
 use urlencoding::encode;
 
-use super::{ArchiveYear, ListingPageConfig, ListingPageMode};
-use crate::handlers::{ExtensionFix, PaginatorPrefix};
+use super::{ArchiveYear, ListingPageConfig, ListingPageMode, PageUrlState, ViewMode};
+use crate::handlers::{calculate_item_index, ExtensionFix, PaginatorPrefix};
 use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
 
 // Helper functions for rendering blog components
-fn blog_post_card(item: &CrawlItem, site_prefix: &str) -> Markup {
+fn blog_post_card(item: &CrawlItem, site_prefix: &str, config: &ListingPageConfig, position_in_page: usize) -> Markup {
     let time = Utc
         .timestamp_millis_opt(item.source_published as i64)
         .unwrap();
     // Use item's source site for asset paths
     let asset_site = &item.site_settings.site_slug;
+    let slideshow_index = calculate_item_index(config, position_in_page);
+    let first_file_id = crate::handlers::common::get_first_downloaded_file_id(item)
+        .unwrap_or_default();
+    let slideshow_url_path = PageUrlState::slideshow(
+        site_prefix.to_string(),
+        "blog".to_string(),
+        config,
+        slideshow_index,
+        first_file_id.clone(),
+        ViewMode::Normal,
+    ).to_url();
 
     html! {
         article.blog_post_card {
             header.post_header {
                 h3.post_title {
-                    a href=(format!("/{}/blog/item/{}", site_prefix, encode(&item.key))) { (item.title) }
+                    a href=(slideshow_url_path) { (item.title) }
                 }
             }
             .post_meta {
@@ -108,8 +119,8 @@ pub fn render_listing_page(
 
     let content = html! {
         .blog_posts {
-            @for item in items {
-                (blog_post_card(item, site_prefix))
+            @for (idx, item) in items.iter().enumerate() {
+                (blog_post_card(item, site_prefix, &config, idx))
             }
         }
         (super::paginator(config.page, config.total, config.per_page, &config.paginator_prefix(site_prefix, "blog")))
@@ -122,8 +133,9 @@ pub fn render_detail_page(
     site_prefix: &str,
     item: &CrawlItem,
     file: &FileCrawlType,
-    route: &str,
+    url_state: &PageUrlState,
 ) -> Markup {
+    let route = url_state.to_route();
     // Use item's source site for asset paths
     let asset_site = &item.site_settings.site_slug;
     let time = Utc
@@ -197,7 +209,7 @@ pub fn render_detail_page(
         }
     };
 
-    blog_layout("", content, site_prefix, route)
+    blog_layout("", content, site_prefix, &route)
 }
 
 pub fn render_tags_page(
@@ -250,4 +262,171 @@ pub fn render_archive_page(site_prefix: &str, archive: &Vec<ArchiveYear>, route:
     };
 
     blog_layout("Archive", content, site_prefix, route)
+}
+
+pub fn render_slideshow_detail_page(
+    site_prefix: &str,
+    item: &CrawlItem,
+    file: &FileCrawlType,
+    url_state: &PageUrlState,
+    prev_url: Option<&str>,
+    next_url: Option<&str>,
+) -> Markup {
+    let route = url_state.to_route();
+    // Use item's source site for asset paths
+    let asset_site = &item.site_settings.site_slug;
+    let time = Utc
+        .timestamp_millis_opt(item.source_published as i64)
+        .unwrap();
+
+    // Get file_id for permalink
+    let file_id = item
+        .flat_files()
+        .into_iter()
+        .filter(|(_, f)| f.is_downloaded())
+        .next()
+        .map(|(id, _)| id);
+
+    let content = html! {
+        article.blog_post {
+            .slideshow_navigation {
+                @if let Some(prev) = prev_url {
+                    a.slideshow_prev href=(prev) data-item-prev { "← Previous" }
+                }
+                @if let Some(file_id) = &file_id {
+                    a.slideshow_permalink href=(format!("/{}/blog/item/{}/{}", site_prefix, encode(&item.key), encode(file_id))) { "Permalink" }
+                }
+                @if let Some(next) = next_url {
+                    a.slideshow_next href=(next) data-item-next { "Next →" }
+                }
+            }
+            header.post_header {
+                h1.post_title { (item.title) }
+                .post_meta {
+                    time datetime=(time.to_rfc3339()) {
+                        (time.format("%B %d, %Y"))
+                    }
+                }
+            }
+            .post_content {
+                @match file {
+                    FileCrawlType::Image { filename, downloaded, .. } => {
+                        @if *downloaded {
+                            figure.post_figure {
+                                img.post_image src=(format!("/{}/assets/{}", asset_site, filename)) alt=(item.title) {}
+                            }
+                        }
+                    }
+                    FileCrawlType::Video { filename, downloaded, .. } => {
+                        @if *downloaded {
+                            @let coerced_filename = filename.as_mp4();
+                            figure.post_figure {
+                                video.post_video controls autoplay {
+                                    source src=(format!("/{}/assets/{}", asset_site, coerced_filename)) {}
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+
+                .post_description {
+                    p { (item.description) }
+                }
+
+                @if !item.meta.is_object() || !item.meta.as_object().unwrap().is_empty() {
+                    .post_meta_details {
+                        h3 { "Additional Details" }
+                        dl {
+                            @for (key, value) in item.meta.as_object().unwrap() {
+                                dt { (key) }
+                                dd { (value) }
+                            }
+                        }
+                    }
+                }
+            }
+            footer.post_footer {
+                .slideshow_navigation {
+                    @if let Some(prev) = prev_url {
+                        a.slideshow_prev href=(prev) data-item-prev { "← Previous" }
+                    }
+                    @if let Some(file_id) = &file_id {
+                        a.slideshow_permalink href=(format!("/{}/blog/item/{}/{}", site_prefix, encode(&item.key), encode(file_id))) { "Permalink" }
+                    }
+                    @if let Some(next) = next_url {
+                        a.slideshow_next href=(next) data-item-next { "Next →" }
+                    }
+                }
+                .post_tags {
+                    @for tag in &item.tags {
+                        @match tag {
+                            CrawlTag::Simple(x) =>
+                                a.post_tag href=(format!("/{}/blog/tag/{}", site_prefix, encode(x))) { (x) },
+                            CrawlTag::Detailed { value, .. } =>
+                                a.post_tag href=(format!("/{}/blog/tag/{}", site_prefix, encode(value))) { (value) },
+                        }
+                    }
+                }
+                p.post_source {
+                    "Source: "
+                    a href=(item.url) { (item.url) }
+                }
+            }
+        }
+    };
+
+    blog_layout("", content, site_prefix, &route)
+}
+
+pub fn render_slideshow_full_page(
+    site_prefix: &str,
+    item: &CrawlItem,
+    file: &FileCrawlType,
+    url_state: &PageUrlState,
+    prev_url: Option<&str>,
+    next_url: Option<&str>,
+    back_url: &str,
+) -> Markup {
+    let route = url_state.to_route();
+    // Use item's source site for asset paths
+    let asset_site = &item.site_settings.site_slug;
+
+    let content = html! {
+        article.blog_post_full {
+            .slideshow_navigation {
+                @if let Some(prev) = prev_url {
+                    a.slideshow_prev href=(prev) data-item-prev { "← Previous" }
+                }
+                a.slideshow_back href=(back_url) data-is-quit data-toggle-full { "← Back" }
+                @if let Some(next) = next_url {
+                    a.slideshow_next href=(next) data-item-next { "Next →" }
+                }
+            }
+            .post_content {
+                @match file {
+                    FileCrawlType::Image { filename, downloaded, .. } => {
+                        @if *downloaded {
+                            figure.post_figure {
+                                img.post_image src=(format!("/{}/assets/{}", asset_site, filename)) alt=(item.title) {}
+                            }
+                        }
+                    }
+                    FileCrawlType::Video { filename, downloaded, .. } => {
+                        @if *downloaded {
+                            @let coerced_filename = filename.as_mp4();
+                            figure.post_figure {
+                                video.post_video controls autoplay {
+                                    source src=(format!("/{}/assets/{}", asset_site, coerced_filename)) {}
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    };
+
+    blog_layout("", content, site_prefix, &route)
 }
