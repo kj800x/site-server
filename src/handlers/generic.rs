@@ -5,7 +5,6 @@ use chrono::{DateTime, Datelike, TimeZone, Utc};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use rand::{seq::SliceRandom, SeedableRng};
-use rand::rngs::StdRng;
 use serde::Deserialize;
 use urlencoding::encode;
 
@@ -454,7 +453,6 @@ pub async fn generic_detail_redirect(
 #[derive(serde::Deserialize)]
 struct ViewModeQuery {
     view: Option<String>,
-    file: Option<String>,
 }
 
 #[get("/item/{id}/{file_id}")]

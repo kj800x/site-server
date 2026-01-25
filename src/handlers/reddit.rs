@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use urlencoding::encode;
 
 use super::{
-    ArchiveYear, ListingPageConfig, ListingPageMode, ListingPageOrdering, PageType, PageUrlState,
+    ArchiveYear, ListingPageConfig, ListingPageMode, ListingPageOrdering, PageUrlState,
     SiteSource, ViewMode,
 };
 use crate::collections::GetKey;
