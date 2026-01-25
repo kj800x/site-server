@@ -1409,3 +1409,52 @@ pre.pre-wrap {
     text-decoration: underline;
   }
 }
+
+.reddit_layout_full .slideshow_navigation {
+  display: none;
+}
+
+/* Slideshow Navigation Styles */
+.slideshow_navigation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border-primary);
+  border-radius: 999px;
+  margin: 0 auto;
+  width: fit-content;
+}
+
+.slideshow_navigation a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-bg-secondary);
+  /* border: 1px solid var(--color-border-primary); */
+  color: var(--color-text-primary);
+  text-decoration: none;
+  transition: all 0.2s ease;
+  font-size: 12px;
+}
+
+.slideshow_navigation a:hover {
+  background: var(--color-bg-primary);
+  border-color: var(--color-border-secondary);
+  transform: scale(1.1);
+}
+
+.slideshow_navigation a:active {
+  transform: scale(0.95);
+}
+
+.slideshow_navigation a i {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

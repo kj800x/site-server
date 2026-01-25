@@ -45,7 +45,7 @@ pub struct Fa(pub &'static str);
 impl maud::Render for Fa {
     fn render(&self) -> Markup {
         html! {
-            i class=(format!("fa fa-solid fa-{}", self.0)) {}
+            i class=(format!("fa fa-{}", self.0)) {}
         }
     }
 }

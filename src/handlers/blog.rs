@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use urlencoding::encode;
 
 use super::{ArchiveYear, ListingPageConfig, ListingPageMode, PageUrlState, ViewMode};
-use crate::handlers::{calculate_item_index, ExtensionFix, PaginatorPrefix};
+use crate::handlers::{calculate_item_index, ExtensionFix, Fa, PaginatorPrefix};
 use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
 
 // Helper functions for rendering blog components
@@ -396,11 +396,11 @@ pub fn render_slideshow_full_page(
         article.blog_post_full {
             .slideshow_navigation {
                 @if let Some(prev) = prev_url {
-                    a.slideshow_prev href=(prev) data-item-prev { "← Previous" }
+                    a.slideshow_prev href=(prev) data-item-prev { (Fa("chevron-left")) }
                 }
-                a.slideshow_back href=(back_url) data-is-quit data-toggle-full { "← Back" }
+                a.slideshow_back href=(back_url) data-is-quit data-toggle-full { (Fa("chevron-left")) }
                 @if let Some(next) = next_url {
-                    a.slideshow_next href=(next) data-item-next { "Next →" }
+                    a.slideshow_next href=(next) data-item-next { (Fa("chevron-right")) }
                 }
             }
             .post_content {
