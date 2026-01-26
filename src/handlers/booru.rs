@@ -248,13 +248,13 @@ pub fn render_slideshow_detail_page(
         article.post {
             .slideshow_navigation {
                 @if let Some(prev) = prev_url {
-                    a.slideshow_prev href=(prev) data-item-prev { (Fa("chevron-left")) }
+                    a.slideshow_prev href=(prev) data-item-prev data-replace-history { (Fa("chevron-left")) }
                 }
                 @if let Some(file_id) = &file_id {
                     a.slideshow_permalink href=(format!("/{}/booru/item/{}/{}", site_prefix, encode(&item.key), encode(file_id))) { (Fa("link")) }
                 }
                 @if let Some(next) = next_url {
-                    a.slideshow_next href=(next) data-item-next { (Fa("chevron-right")) }
+                    a.slideshow_next href=(next) data-item-next data-replace-history { (Fa("chevron-right")) }
                 }
             }
             h1 { (item.title) }
@@ -298,13 +298,13 @@ pub fn render_slideshow_detail_page(
             footer.post_footer {
                 .slideshow_navigation {
                     @if let Some(prev) = prev_url {
-                        a.slideshow_prev href=(prev) data-item-prev { "← Previous" }
+                        a.slideshow_prev href=(prev) data-item-prev data-replace-history { "← Previous" }
                     }
                     @if let Some(file_id) = &file_id {
                         a.slideshow_permalink href=(format!("/{}/booru/item/{}/{}", site_prefix, encode(&item.key), encode(file_id))) { "Permalink" }
                     }
                     @if let Some(next) = next_url {
-                        a.slideshow_next href=(next) data-item-next { "Next →" }
+                        a.slideshow_next href=(next) data-item-next data-replace-history { "Next →" }
                     }
                 }
                 .post_tags {
@@ -345,11 +345,11 @@ pub fn render_slideshow_full_page(
         article.post_full {
             .slideshow_navigation {
                 @if let Some(prev) = prev_url {
-                    a.slideshow_prev href=(prev) data-item-prev { (Fa("chevron-left")) }
+                    a.slideshow_prev href=(prev) data-item-prev data-replace-history { (Fa("chevron-left")) }
                 }
                 a.slideshow_back href=(back_url) data-is-quit data-toggle-full { (Fa("chevron-left")) }
                 @if let Some(next) = next_url {
-                    a.slideshow_next href=(next) data-item-next { (Fa("chevron-right")) }
+                    a.slideshow_next href=(next) data-item-next data-replace-history { (Fa("chevron-right")) }
                 }
             }
             .post_content {
