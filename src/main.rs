@@ -31,7 +31,9 @@ use site_server::{
         generic_random_handler, generic_random_slideshow_handler,
         generic_search_slideshow_handler, generic_tag_handler,
         generic_tag_page_handler, generic_tag_slideshow_handler,
-        generic_tags_index_handler, media_viewer_fragment_handler, search_form_handler,
+        generic_tags_index_handler, media_viewer_fragment_handler,
+        remote_asset_proxy_handler, RemoteAssetBaseUrl,
+        search_form_handler,
         search_results_handler, serve_crawled_json, SiteRenderer, SiteSource,
     },
     serve_static_file, thread_safe_work_dir, workdir,
@@ -202,7 +204,14 @@ async fn run() -> errors::Result<()> {
             let mut work_dirs_vec = vec![];
             for work_dir in work_dirs.into_iter() {
                 println!("Loading WorkDir: {}", work_dir);
-                let work_dir = WorkDir::new(work_dir.to_string()).expect("Failed to load WorkDir");
+                // Load on a separate OS thread so reqwest::blocking doesn't
+                // conflict with the actix async runtime we're inside of.
+                let wd_path = work_dir.to_string();
+                let work_dir = thread::spawn(move || {
+                    WorkDir::new(wd_path).expect("Failed to load WorkDir")
+                })
+                .join()
+                .expect("WorkDir loading thread panicked");
                 let threadsafe_work_dir = ThreadSafeWorkDirImpl::new(work_dir);
                 let update_clone = threadsafe_work_dir.clone();
                 work_dirs_vec.push(threadsafe_work_dir);
@@ -221,6 +230,8 @@ async fn run() -> errors::Result<()> {
                 .unwrap();
             let provider = MeterProvider::builder().with_reader(exporter).build();
             global::set_meter_provider(provider);
+
+            let reqwest_client = reqwest::Client::new();
 
             let listen_address = std::env::var("LISTEN_ADDRESS").unwrap_or("127.0.0.1".to_owned());
 
@@ -247,6 +258,7 @@ async fn run() -> errors::Result<()> {
                     )
                     .app_data(web::Data::new(work_dirs_vec.clone()))
                     .app_data(web::Data::new(StartTime(Utc::now().timestamp_millis())))
+                    .app_data(web::Data::new(reqwest_client.clone()))
                     .wrap(
                         middleware::Logger::default()
                             .exclude("/healthz")
@@ -324,12 +336,22 @@ async fn run() -> errors::Result<()> {
                             .app_data(web::Data::new(site_source.clone()))
                             .app_data(web::Data::new(WorkDirPrefix(slug.clone())))
                             .service(serve_crawled_json)
-                            // Only add the assets route if the site source provides an assets path
                             .configure(|scope| {
                                 if let Some(assets_path) = site_source.get_assets_path() {
+                                    // Local site: serve assets from disk
                                     scope.service(
                                         Files::new("/assets", assets_path).prefer_utf8(true),
                                     );
+                                } else if let Some(remote_url) = site_source.get_remote_url() {
+                                    // Remote site: proxy asset requests
+                                    scope
+                                        .app_data(web::Data::new(RemoteAssetBaseUrl(
+                                            remote_url,
+                                        )))
+                                        .route(
+                                            "/assets/{path:.*}",
+                                            web::get().to(remote_asset_proxy_handler),
+                                        );
                                 }
                             }),
                     );
@@ -348,8 +370,8 @@ async fn run() -> errors::Result<()> {
 
 #[actix_web::main]
 async fn main() {
-    if let Err(ref _e) = run().await {
-        // _e.print();
+    if let Err(ref e) = run().await {
+        eprintln!("Fatal error: {}", e);
         ::std::process::exit(1);
     }
 }

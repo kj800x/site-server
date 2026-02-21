@@ -274,7 +274,21 @@ impl SiteSource {
         match self {
             SiteSource::Single(workdir) => {
                 let wd = workdir.work_dir.read().unwrap();
-                Some(PathBuf::from(wd.path.clone()))
+                if wd.remote_url.is_some() {
+                    None // Remote sites don't have local assets
+                } else {
+                    Some(PathBuf::from(wd.path.clone()))
+                }
+            }
+            SiteSource::All { .. } => None,
+        }
+    }
+
+    pub fn get_remote_url(&self) -> Option<String> {
+        match self {
+            SiteSource::Single(workdir) => {
+                let wd = workdir.work_dir.read().unwrap();
+                wd.remote_url.clone()
             }
             SiteSource::All { .. } => None,
         }

@@ -15,6 +15,9 @@ use crate::{
 };
 use urlencoding::decode;
 
+/// Base URL for proxying asset requests to a remote site server.
+pub struct RemoteAssetBaseUrl(pub String);
+
 use super::{
     ListingPageConfig, ListingPageMode, ListingPageOrdering, PageUrlState, SiteRenderer, SiteRendererType,
     SiteSource, ViewMode,
@@ -1541,4 +1544,41 @@ pub async fn generic_archive_slideshow_handler(
         )
     };
     HttpResponse::Ok().body(markup.0)
+}
+
+pub async fn remote_asset_proxy_handler(
+    base_url: web::Data<RemoteAssetBaseUrl>,
+    client: web::Data<reqwest::Client>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let asset_path = path.into_inner();
+    let url = format!("{}/v1/assets/{}", base_url.0, asset_path);
+
+    match client.get(&url).send().await {
+        Ok(resp) => {
+            let status = resp.status();
+            let mut builder = HttpResponse::build(
+                actix_web::http::StatusCode::from_u16(status.as_u16())
+                    .unwrap_or(actix_web::http::StatusCode::BAD_GATEWAY),
+            );
+
+            if let Some(ct) = resp.headers().get("content-type") {
+                if let Ok(ct_str) = ct.to_str() {
+                    builder.content_type(ct_str);
+                }
+            }
+
+            match resp.bytes().await {
+                Ok(body) => builder.body(body),
+                Err(e) => {
+                    log::warn!("Failed to read remote asset body for {}: {}", url, e);
+                    HttpResponse::BadGateway().body("Failed to read remote asset")
+                }
+            }
+        }
+        Err(e) => {
+            log::warn!("Failed to proxy asset request to {}: {}", url, e);
+            HttpResponse::BadGateway().body("Failed to fetch remote asset")
+        }
+    }
 }
