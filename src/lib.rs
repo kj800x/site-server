@@ -46,6 +46,7 @@ macro_rules! serve_static_file {
     }};
 }
 
+pub mod auth;
 pub mod bake;
 pub mod collections;
 pub mod errors;

@@ -3,6 +3,7 @@ use std::{collections::HashMap, path::PathBuf};
 use chrono::Utc;
 use maud::{html, Markup, PreEscaped};
 
+pub mod auth;
 mod blog;
 mod booru;
 mod common;

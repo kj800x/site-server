@@ -1,46 +1,4 @@
 use actix_web::web;
-use actix_web_httpauth::extractors::basic::{BasicAuth, Config};
-use actix_web_httpauth::extractors::AuthenticationError;
-
-// Authentication validator function
-pub async fn validator(
-    req: actix_web::dev::ServiceRequest,
-    credentials: Option<BasicAuth>,
-) -> Result<actix_web::dev::ServiceRequest, (actix_web::Error, actix_web::dev::ServiceRequest)> {
-    // Allow metrics and healthz requests to pass through
-    if req.path() == "/api/metrics" || req.path() == "/healthz" {
-        return Ok(req);
-    }
-
-    // Get auth credentials from environment
-    let expected_username = std::env::var("BASIC_AUTH_USERNAME").unwrap_or_default();
-    let expected_password = std::env::var("BASIC_AUTH_PASSWORD").unwrap_or_default();
-
-    // If auth environment variables are not set, don't enforce authentication
-    if expected_username.is_empty() || expected_password.is_empty() {
-        return Ok(req);
-    }
-
-    let credentials = if let Some(credentials) = credentials {
-        credentials
-    } else {
-        return Err((
-            AuthenticationError::from(Config::default().realm("Site Server")).into(),
-            req,
-        ));
-    };
-
-    // Check if credentials match
-    let password = credentials.password().unwrap_or_default();
-    if credentials.user_id() == expected_username && password == expected_password {
-        Ok(req)
-    } else {
-        return Err((
-            AuthenticationError::from(Config::default().realm("Site Server")).into(),
-            req,
-        ));
-    }
-}
 
 // Common error response for locked workdir
 pub fn workdir_locked_error() -> actix_web::Error {

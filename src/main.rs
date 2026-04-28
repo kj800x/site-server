@@ -17,6 +17,7 @@ use std::io::Read;
 use std::{thread, time::Duration};
 
 use site_server::{
+    auth,
     errors,
     handlers::{
         self, generic_archive_index_handler, generic_archive_page_handler,
@@ -238,10 +239,10 @@ async fn run() -> errors::Result<()> {
             log::info!("Starting HTTP server at http://{}:8080", listen_address);
 
             HttpServer::new(move || {
-                let auth = HttpAuthentication::with_fn(handlers::validator);
+                let auth_mw = HttpAuthentication::with_fn(auth::validator);
 
                 let mut app = App::new()
-                    .wrap(auth) // Guard all routes with HTTP Basic Auth
+                    .wrap(auth_mw) // Accept either HTTP Basic Auth or JWT cookie
                     .wrap(RequestTracing::new())
                     .wrap(RequestMetrics::default())
                     .route(
@@ -271,6 +272,9 @@ async fn run() -> errors::Result<()> {
                     .service(serve_static_file!("idiomorph-ext.min.js"))
                     .service(serve_static_file!("htmx.min.js"))
                     .service(healthz)
+                    .service(handlers::auth::login_form)
+                    .service(handlers::auth::login_submit)
+                    .service(handlers::auth::logout)
                     .service(root_index_handler)
                     .service(sites_json_handler);
 
