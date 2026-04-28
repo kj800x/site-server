@@ -1,5 +1,5 @@
 # Build Stage
-FROM rust:1.85-alpine AS builder
+FROM rust:1.90-alpine AS builder
 WORKDIR /usr/src/
 # Install required build dependencies
 RUN apk add --no-cache musl-dev pkgconfig openssl-dev libc-dev gcc
