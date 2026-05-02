@@ -2,6 +2,10 @@
   navigation: auto;
 }
 
+::view-transition {
+  background: #0E1113;
+}
+
 @keyframes fade-in {
   from { opacity: 0; }
 }
@@ -18,17 +22,17 @@
   to { transform: translateX(-90px); }
 }
 
-/* define animations for the old and new content */
-::view-transition-old(slide-it) {
+::view-transition-old(slide-next),
+::view-transition-old(slide-prev) {
   animation: 180ms cubic-bezier(0.4, 0, 1, 1) both fade-out,
   600ms cubic-bezier(0.4, 0, 0.2, 1) both slide-to-left;
 }
-::view-transition-new(slide-it) {
+::view-transition-new(slide-next),
+::view-transition-new(slide-prev) {
   animation: 420ms cubic-bezier(0, 0, 0.2, 1) 90ms both fade-in,
   600ms cubic-bezier(0.4, 0, 0.2, 1) both slide-from-right;
 }
 
-/* tie the view transition to a given CSS class */
 *[data-is-next] {
     view-transition-name: slide-next;
 }
