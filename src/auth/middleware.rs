@@ -43,11 +43,7 @@ pub async fn validator(
 }
 
 fn is_public_path(path: &str) -> bool {
-    if path == "/healthz"
-        || path == "/api/metrics"
-        || path == "/login"
-        || path == "/logout"
-    {
+    if path == "/healthz" || path == "/api/metrics" || path == "/login" || path == "/logout" {
         return true;
     }
     if path.starts_with("/res/") {

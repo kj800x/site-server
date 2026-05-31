@@ -5,13 +5,12 @@ use std::collections::HashMap;
 use urlencoding::encode;
 
 use super::{
-    ArchiveYear, ListingPageConfig, ListingPageMode, ListingPageOrdering, PageUrlState,
-    SiteSource, ViewMode,
+    ArchiveYear, ListingPageConfig, ListingPageMode, ListingPageOrdering, PageUrlState, SiteSource,
+    ViewMode,
 };
 use crate::collections::GetKey;
 use crate::handlers::{
-    calculate_item_index, format_year_month, timeago, ExtensionFix, Fa,
-    PaginatorPrefix,
+    calculate_item_index, format_year_month, timeago, ExtensionFix, Fa, PaginatorPrefix,
 };
 use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
 
@@ -88,8 +87,8 @@ fn reddit_post_card(
     let asset_site = &item.site_settings.site_slug;
 
     let slideshow_index = calculate_item_index(config, position_in_page);
-    let first_file_id = crate::handlers::common::get_first_downloaded_file_id(item)
-        .unwrap_or_default();
+    let first_file_id =
+        crate::handlers::common::get_first_downloaded_file_id(item).unwrap_or_default();
     let post_href = PageUrlState::slideshow(
         site_prefix.to_string(),
         "r".to_string(),
@@ -97,7 +96,8 @@ fn reddit_post_card(
         slideshow_index,
         first_file_id.clone(),
         ViewMode::Normal,
-    ).to_url();
+    )
+    .to_url();
     let title_id = format!("post-title-{}", encode(&item.key));
 
     html! {
@@ -233,16 +233,14 @@ pub fn post_file_paginator(
     let first_file = flat_files.first();
     let last_file = flat_files.last();
 
-    let file_url = |file_id: &str| {
-        url_state.with_file_id(file_id.to_string()).to_url()
-    };
+    let file_url = |file_id: &str| url_state.with_file_id(file_id.to_string()).to_url();
 
     html! {
         div.post_file_paginator {
             @if let Some(first_file) = first_file {
                 @if first_file.0 != current_file.get_key() {
                     a.first
-                        href=(file_url(&first_file.0))
+                        href=(file_url(first_file.0))
                         data-file-first
                         data-replace-history
                         style="display: none;"
@@ -252,7 +250,7 @@ pub fn post_file_paginator(
             @if let Some(last_file) = last_file {
                 @if last_file.0 != current_file.get_key() {
                     a.last
-                        href=(file_url(&last_file.0))
+                        href=(file_url(last_file.0))
                         data-file-last
                         data-replace-history
                         style="display: none;"
@@ -261,7 +259,7 @@ pub fn post_file_paginator(
             }
             @if let Some(prev_file) = prev_file {
                 a.prev
-                    href=(file_url(&prev_file.0))
+                    href=(file_url(prev_file.0))
                     data-file-prev
                     data-replace-history
                 {
@@ -272,7 +270,7 @@ pub fn post_file_paginator(
             }
             @if let Some(next_file) = next_file {
                 a.next
-                    href=(file_url(&next_file.0))
+                    href=(file_url(next_file.0))
                     data-file-next
                     data-replace-history
                 {
@@ -308,7 +306,7 @@ pub fn render_media_viewer(
                         figure.post_figure {
                             img.post_image src=(format!("/{}/assets/{}", asset_site, filename)) alt=(item.title) {}
                             a.fullscreen_click_target data-toggle-full data-replace-history href=(toggle_url) {}
-                            (post_file_paginator(item, &file, &url_state))
+                            (post_file_paginator(item, file, url_state))
                         }
                     }
                 }
@@ -322,7 +320,7 @@ pub fn render_media_viewer(
                             a.fullscreen_link data-toggle-full data-replace-history href=(toggle_url) {
                                 (Fa("expand"))
                             }
-                            (post_file_paginator(item, &file, url_state))
+                            (post_file_paginator(item, file, url_state))
                         }
                     }
                 }
@@ -374,7 +372,7 @@ pub fn render_full_media_viewer(
                     @if *downloaded {
                         figure.post_figure {
                             img.post_image src=(format!("/{}/assets/{}", asset_site, filename)) alt=(item.title) {}
-                            (post_file_paginator(item, &file, &url_state.with_view_mode(ViewMode::Full)))
+                            (post_file_paginator(item, file, &url_state.with_view_mode(ViewMode::Full)))
                         }
                     }
                 }
@@ -385,7 +383,7 @@ pub fn render_full_media_viewer(
                             video.post_video controls autoplay {
                                 source src=(format!("/{}/assets/{}", asset_site, coerced_filename)) {}
                             }
-                            (post_file_paginator(item, &file, &url_state.with_view_mode(ViewMode::Full)))
+                            (post_file_paginator(item, file, &url_state.with_view_mode(ViewMode::Full)))
                         }
                     }
                 }
@@ -439,7 +437,7 @@ pub fn render_detail_page(
                 @if item.flat_files().iter().filter(|(_, f)| f.is_downloaded()).count() > 0 {
                     a.toggle-full-link data-toggle-full data-replace-history href=(toggle_url) style="display: none;" {}
                 }
-                (render_media_viewer(&item, &file, &url_state))
+                (render_media_viewer(item, file, url_state))
 
                 .post_description {
                     p { (item.description) }
@@ -488,7 +486,7 @@ pub fn render_detail_full_page(
 ) -> Markup {
     let content = html! {
         article.reddit_post_detail_full {
-            (render_full_media_viewer(&item, &file, &url_state, None))
+            (render_full_media_viewer(item, file, url_state, None))
         }
     };
 
@@ -506,7 +504,7 @@ pub fn render_slideshow_full_page(
 ) -> Markup {
     let content = html! {
         article.reddit_post_detail_full {
-            (render_full_media_viewer(&item, &file, &url_state, Some(back_url)))
+            (render_full_media_viewer(item, file, url_state, Some(back_url)))
             .slideshow_navigation {
                 @if let Some(prev) = prev_url {
                     a.slideshow_prev href=(prev) data-item-prev data-replace-history { (Fa("chevron-left")) }
@@ -561,9 +559,7 @@ pub fn render_slideshow_detail_page(
     // Get file_id for permalink
     let file_id = item
         .flat_files()
-        .into_iter()
-        .filter(|(_, f)| f.is_downloaded())
-        .next()
+        .into_iter().find(|(_, f)| f.is_downloaded())
         .map(|(id, _)| id);
 
     let toggle_url = url_state.toggle_view_mode().to_url();
@@ -599,7 +595,7 @@ pub fn render_slideshow_detail_page(
                 @if item.flat_files().iter().filter(|(_, f)| f.is_downloaded()).count() > 0 {
                     a.toggle-full-link data-toggle-full data-replace-history href=(toggle_url) style="display: none;" {}
                 }
-                (render_media_viewer(&item, &file, &url_state))
+                (render_media_viewer(item, file, url_state))
 
                 .post_description {
                     p { (item.description) }
@@ -654,8 +650,7 @@ pub fn render_slideshow_detail_page(
 pub fn render_archive_page(site_prefix: &str, archive: &Vec<ArchiveYear>, route: &str) -> Markup {
     let archive_months = archive
         .iter()
-        .map(|year| year.months.iter())
-        .flatten()
+        .flat_map(|year| year.months.iter())
         .collect::<Vec<_>>();
 
     let content = html! {

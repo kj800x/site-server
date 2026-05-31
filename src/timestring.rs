@@ -402,7 +402,7 @@ fn try_parse_american_date(input: &str, tz: Tz) -> Option<TimeSpec> {
     let day: u32 = caps.get(2)?.as_str().parse().ok()?;
     let year: i32 = caps.get(3)?.as_str().parse().ok()?;
 
-    if month < 1 || month > 12 || day < 1 || day > 31 {
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
         return None;
     }
 
@@ -428,7 +428,7 @@ fn try_parse_human_date(input: &str, tz: Tz) -> Option<TimeSpec> {
 
     let month = month_name_to_num(&month_name)?;
 
-    if day < 1 || day > 31 {
+    if !(1..=31).contains(&day) {
         return None;
     }
 

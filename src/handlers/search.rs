@@ -54,7 +54,7 @@ pub async fn search_form_handler(
                 title { "Search" }
             }
             body.search-page hx-ext="morph" {
-                (header(&site_prefix, &rendering_prefix, "/search"))
+                (header(&site_prefix, rendering_prefix, "/search"))
                 main {
                     .search-page-container {
                         form.search-form-container method="get" action=(format!("/{}/{}/search", site_prefix, rendering_prefix)) {
@@ -129,7 +129,7 @@ pub async fn search_results_handler(
         Err(_) => {
             return error_page(
                 &site_prefix,
-                &rendering_prefix,
+                rendering_prefix,
                 "Invalid URL encoding in search query",
             );
         }
@@ -141,7 +141,7 @@ pub async fn search_results_handler(
         Err(e) => {
             return error_page(
                 &site_prefix,
-                &rendering_prefix,
+                rendering_prefix,
                 &format!("Parse error: {}", e),
             );
         }

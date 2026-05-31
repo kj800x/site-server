@@ -16,7 +16,7 @@ pub use common::*;
 pub use generic::*;
 pub use reddit::media_viewer_fragment_handler;
 pub use search::{search_form_handler, search_results_handler};
-pub use url_state::{PageUrlState, PageType, ViewMode};
+pub use url_state::{PageType, PageUrlState, ViewMode};
 
 use crate::site::{CrawlItem, FileCrawlType};
 
@@ -97,7 +97,7 @@ pub fn format_year_month(year: i32, month: u8) -> String {
 
 pub fn timeago(timestamp: u64) -> Markup {
     let dt =
-        chrono::DateTime::from_timestamp_millis(timestamp as i64).unwrap_or_else(|| Utc::now());
+        chrono::DateTime::from_timestamp_millis(timestamp as i64).unwrap_or_else(Utc::now);
 
     let now = Utc::now().timestamp_millis() as u64;
     let diff = now - timestamp;
@@ -169,7 +169,7 @@ pub fn header(site_prefix: &str, rendering_prefix: &str, current_route: &str) ->
             format!("/{}{}", target_prefix, current_route)
         }
     };
-    
+
     html! {
         header.page-header {
             nav {
@@ -211,7 +211,7 @@ pub fn header(site_prefix: &str, rendering_prefix: &str, current_route: &str) ->
 }
 
 pub fn paginator(page: usize, total: usize, per_page: usize, prefix: &str) -> Markup {
-    let pages = (total + per_page - 1) / per_page;
+    let pages = total.div_ceil(per_page);
     let mut links = vec![];
 
     if page > 1 {
@@ -238,13 +238,13 @@ pub fn paginator(page: usize, total: usize, per_page: usize, prefix: &str) -> Ma
         });
     }
 
-    return html! {
+    html! {
         .paginator {
             @for link in &links {
                 (link)
             }
         }
-    };
+    }
 }
 
 // Common types used across handlers
@@ -451,7 +451,6 @@ impl PaginatorPrefix for ListingPageConfig {
     }
 }
 
-
 /// Calculate the global 1-indexed position of an item in a listing page
 pub fn calculate_item_index(config: &ListingPageConfig, position_in_page: usize) -> usize {
     (config.page - 1) * config.per_page + position_in_page + 1
@@ -549,8 +548,12 @@ impl SiteRenderer for SiteRendererType {
     ) -> Markup {
         match self {
             SiteRendererType::Blog => blog::render_detail_page(site_prefix, item, file, url_state),
-            SiteRendererType::Booru => booru::render_detail_page(site_prefix, item, file, url_state),
-            SiteRendererType::Reddit => reddit::render_detail_page(site_prefix, item, file, url_state),
+            SiteRendererType::Booru => {
+                booru::render_detail_page(site_prefix, item, file, url_state)
+            }
+            SiteRendererType::Reddit => {
+                reddit::render_detail_page(site_prefix, item, file, url_state)
+            }
         }
     }
 
@@ -592,7 +595,9 @@ impl SiteRenderer for SiteRendererType {
     ) -> Markup {
         match self {
             SiteRendererType::Blog => blog::render_detail_page(site_prefix, item, file, url_state),
-            SiteRendererType::Booru => booru::render_detail_page(site_prefix, item, file, url_state),
+            SiteRendererType::Booru => {
+                booru::render_detail_page(site_prefix, item, file, url_state)
+            }
             SiteRendererType::Reddit => {
                 reddit::render_detail_full_page(site_prefix, item, file, url_state)
             }
@@ -609,15 +614,30 @@ impl SiteRenderer for SiteRendererType {
         next_url: Option<&str>,
     ) -> Markup {
         match self {
-            SiteRendererType::Blog => {
-                blog::render_slideshow_detail_page(site_prefix, item, file, url_state, prev_url, next_url)
-            }
-            SiteRendererType::Booru => {
-                booru::render_slideshow_detail_page(site_prefix, item, file, url_state, prev_url, next_url)
-            }
-            SiteRendererType::Reddit => {
-                reddit::render_slideshow_detail_page(site_prefix, item, file, url_state, prev_url, next_url)
-            }
+            SiteRendererType::Blog => blog::render_slideshow_detail_page(
+                site_prefix,
+                item,
+                file,
+                url_state,
+                prev_url,
+                next_url,
+            ),
+            SiteRendererType::Booru => booru::render_slideshow_detail_page(
+                site_prefix,
+                item,
+                file,
+                url_state,
+                prev_url,
+                next_url,
+            ),
+            SiteRendererType::Reddit => reddit::render_slideshow_detail_page(
+                site_prefix,
+                item,
+                file,
+                url_state,
+                prev_url,
+                next_url,
+            ),
         }
     }
 
@@ -632,15 +652,33 @@ impl SiteRenderer for SiteRendererType {
         back_url: &str,
     ) -> Markup {
         match self {
-            SiteRendererType::Blog => {
-                blog::render_slideshow_full_page(site_prefix, item, file, url_state, prev_url, next_url, back_url)
-            }
-            SiteRendererType::Booru => {
-                booru::render_slideshow_full_page(site_prefix, item, file, url_state, prev_url, next_url, back_url)
-            }
-            SiteRendererType::Reddit => {
-                reddit::render_slideshow_full_page(site_prefix, item, file, url_state, prev_url, next_url, back_url)
-            }
+            SiteRendererType::Blog => blog::render_slideshow_full_page(
+                site_prefix,
+                item,
+                file,
+                url_state,
+                prev_url,
+                next_url,
+                back_url,
+            ),
+            SiteRendererType::Booru => booru::render_slideshow_full_page(
+                site_prefix,
+                item,
+                file,
+                url_state,
+                prev_url,
+                next_url,
+                back_url,
+            ),
+            SiteRendererType::Reddit => reddit::render_slideshow_full_page(
+                site_prefix,
+                item,
+                file,
+                url_state,
+                prev_url,
+                next_url,
+                back_url,
+            ),
         }
     }
 

@@ -76,12 +76,12 @@ enum Token {
 
 fn tokenize(input: &str) -> Result<Vec<Token>, ParseError> {
     let mut tokens = Vec::new();
-    let mut chars = input.chars().peekable();
+    let chars = input.chars().peekable();
     let mut current_string = String::new();
     let mut in_string = false;
     let mut escape = false;
 
-    while let Some(ch) = chars.next() {
+    for ch in chars {
         if escape {
             current_string.push(ch);
             escape = false;

@@ -28,11 +28,12 @@ pub async fn login_form(query: web::Query<LoginQuery>) -> impl Responder {
 }
 
 #[post("/login")]
-pub async fn login_submit(
-    req: HttpRequest,
-    form: web::Form<LoginForm>,
-) -> impl Responder {
-    let LoginForm { username, password, next } = form.into_inner();
+pub async fn login_submit(req: HttpRequest, form: web::Form<LoginForm>) -> impl Responder {
+    let LoginForm {
+        username,
+        password,
+        next,
+    } = form.into_inner();
     let safe_next = sanitize_next(next.as_deref());
 
     let (expected_user, expected_pass) = match configured_credentials() {
