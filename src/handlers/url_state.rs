@@ -71,7 +71,6 @@ impl PageUrlState {
         }
     }
 
-
     /// Change the file_id
     pub fn with_file_id(&self, file_id: String) -> Self {
         Self {
@@ -137,7 +136,11 @@ impl PageUrlState {
     /// Generate the URL string
     pub fn to_url(&self) -> String {
         let base = match &self.page_type {
-            PageType::Slideshow { mode, ordering, index } => {
+            PageType::Slideshow {
+                mode,
+                ordering,
+                index,
+            } => {
                 let slideshow_part = match mode {
                     ListingPageMode::All => match ordering {
                         ListingPageOrdering::NewestFirst => {
@@ -151,27 +154,56 @@ impl PageUrlState {
                         }
                     },
                     ListingPageMode::ByTag { tag } => {
-                        format!("/{}/tag/{}/slideshow/{}", self.rendering_prefix, encode(tag), index)
+                        format!(
+                            "/{}/tag/{}/slideshow/{}",
+                            self.rendering_prefix,
+                            encode(tag),
+                            index
+                        )
                     }
                     ListingPageMode::ByMonth { year, month } => {
-                        format!("/{}/archive/{}/{}/slideshow/{}", self.rendering_prefix, year, month, index)
+                        format!(
+                            "/{}/archive/{}/{}/slideshow/{}",
+                            self.rendering_prefix, year, month, index
+                        )
                     }
                     ListingPageMode::Search { query } => {
-                        format!("/{}/search/{}/slideshow/{}", self.rendering_prefix, encode(query), index)
+                        format!(
+                            "/{}/search/{}/slideshow/{}",
+                            self.rendering_prefix,
+                            encode(query),
+                            index
+                        )
                     }
                 };
 
                 if let Some(ref file_id) = self.file_id {
-                    format!("/{}{}/{}", self.site_prefix, slideshow_part, encode(file_id))
+                    format!(
+                        "/{}{}/{}",
+                        self.site_prefix,
+                        slideshow_part,
+                        encode(file_id)
+                    )
                 } else {
                     format!("/{}{}", self.site_prefix, slideshow_part)
                 }
             }
             PageType::ItemPermalink { item_key } => {
                 if let Some(ref file_id) = self.file_id {
-                    format!("/{}/{}/item/{}/{}", self.site_prefix, self.rendering_prefix, encode(item_key), encode(file_id))
+                    format!(
+                        "/{}/{}/item/{}/{}",
+                        self.site_prefix,
+                        self.rendering_prefix,
+                        encode(item_key),
+                        encode(file_id)
+                    )
                 } else {
-                    format!("/{}/{}/item/{}", self.site_prefix, self.rendering_prefix, encode(item_key))
+                    format!(
+                        "/{}/{}/item/{}",
+                        self.site_prefix,
+                        self.rendering_prefix,
+                        encode(item_key)
+                    )
                 }
             }
         };
@@ -185,7 +217,11 @@ impl PageUrlState {
     /// Generate URL without site prefix (for route parameter)
     pub fn to_route(&self) -> String {
         let base = match &self.page_type {
-            PageType::Slideshow { mode, ordering, index } => {
+            PageType::Slideshow {
+                mode,
+                ordering,
+                index,
+            } => {
                 let slideshow_part = match mode {
                     ListingPageMode::All => match ordering {
                         ListingPageOrdering::NewestFirst => {
@@ -199,13 +235,26 @@ impl PageUrlState {
                         }
                     },
                     ListingPageMode::ByTag { tag } => {
-                        format!("/{}/tag/{}/slideshow/{}", self.rendering_prefix, encode(tag), index)
+                        format!(
+                            "/{}/tag/{}/slideshow/{}",
+                            self.rendering_prefix,
+                            encode(tag),
+                            index
+                        )
                     }
                     ListingPageMode::ByMonth { year, month } => {
-                        format!("/{}/archive/{}/{}/slideshow/{}", self.rendering_prefix, year, month, index)
+                        format!(
+                            "/{}/archive/{}/{}/slideshow/{}",
+                            self.rendering_prefix, year, month, index
+                        )
                     }
                     ListingPageMode::Search { query } => {
-                        format!("/{}/search/{}/slideshow/{}", self.rendering_prefix, encode(query), index)
+                        format!(
+                            "/{}/search/{}/slideshow/{}",
+                            self.rendering_prefix,
+                            encode(query),
+                            index
+                        )
                     }
                 };
 
@@ -217,7 +266,12 @@ impl PageUrlState {
             }
             PageType::ItemPermalink { item_key } => {
                 if let Some(ref file_id) = self.file_id {
-                    format!("/{}/item/{}/{}", self.rendering_prefix, encode(item_key), encode(file_id))
+                    format!(
+                        "/{}/item/{}/{}",
+                        self.rendering_prefix,
+                        encode(item_key),
+                        encode(file_id)
+                    )
                 } else {
                     format!("/{}/item/{}", self.rendering_prefix, encode(item_key))
                 }

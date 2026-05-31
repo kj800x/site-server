@@ -65,7 +65,7 @@ impl GetKey for FileCrawlType {
             FileCrawlType::Image { key, .. }
             | FileCrawlType::Video { key, .. }
             | FileCrawlType::Intermediate { key, .. }
-            | FileCrawlType::Text { key, .. } => &key,
+            | FileCrawlType::Text { key, .. } => key,
         }
     }
 }

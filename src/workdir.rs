@@ -113,11 +113,7 @@ impl WorkDir {
         let (mut crawled, last_seen_modified, remote_url, work_dir_path) =
             if let Some(ref remote_url) = config.remote_url {
                 // Remote site: fetch items from API
-                log::info!(
-                    "Loading remote site '{}' from {}",
-                    config.slug,
-                    remote_url
-                );
+                log::info!("Loading remote site '{}' from {}", config.slug, remote_url);
 
                 let version_url = format!("{}/v1/version", remote_url);
                 let version_resp: RemoteVersionResponse = reqwest::blocking::get(&version_url)

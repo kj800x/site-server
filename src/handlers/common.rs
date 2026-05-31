@@ -2,9 +2,9 @@ use actix_web::web;
 
 // Common error response for locked workdir
 pub fn workdir_locked_error() -> actix_web::Error {
-    actix_web::Error::from(actix_web::error::ErrorServiceUnavailable(
+    actix_web::error::ErrorServiceUnavailable(
         "Work directory is locked",
-    ))
+    )
 }
 
 // Helper function to get workdir from ThreadSafeWorkDir
@@ -38,9 +38,9 @@ pub fn date_time_element(timestamp: Option<u64>) -> maud::Markup {
 
 /// Get the first downloaded file ID from an item
 pub fn get_first_downloaded_file_id(item: &crate::site::CrawlItem) -> Option<String> {
-    use indexmap::IndexMap;
     use crate::site::FileCrawlType;
-    
+    use indexmap::IndexMap;
+
     item.flat_files()
         .into_iter()
         .filter(|(_, file)| file.is_downloaded())

@@ -9,7 +9,11 @@ pub use middleware::validator;
 
 /// Read configured username/password from env. Returns None if either is unset/empty.
 pub fn configured_credentials() -> Option<(String, String)> {
-    let user = std::env::var("BASIC_AUTH_USERNAME").ok().filter(|s| !s.is_empty())?;
-    let pass = std::env::var("BASIC_AUTH_PASSWORD").ok().filter(|s| !s.is_empty())?;
+    let user = std::env::var("BASIC_AUTH_USERNAME")
+        .ok()
+        .filter(|s| !s.is_empty())?;
+    let pass = std::env::var("BASIC_AUTH_PASSWORD")
+        .ok()
+        .filter(|s| !s.is_empty())?;
     Some((user, pass))
 }

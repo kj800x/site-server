@@ -205,7 +205,7 @@ impl CrawlItem {
 impl Bake for WorkDir {
     fn bake_all(&self) {
         let items = self.crawled.clone();
-        for item in items.values().into_iter() {
+        for item in items.values() {
             if item.previews.is_empty() {
                 let flat_files = item.flat_files();
                 let first_usable_file = flat_files

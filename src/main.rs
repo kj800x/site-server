@@ -17,25 +17,21 @@ use std::io::Read;
 use std::{thread, time::Duration};
 
 use site_server::{
-    auth,
-    errors,
+    auth, errors,
     handlers::{
         self, generic_archive_index_handler, generic_archive_page_handler,
         generic_archive_slideshow_handler, generic_archive_slideshow_redirect_handler,
-        generic_latest_slideshow_redirect_handler, generic_oldest_slideshow_redirect_handler,
-        generic_random_slideshow_redirect_handler, generic_tag_slideshow_redirect_handler,
-        generic_search_slideshow_redirect_handler, generic_detail_handler, generic_detail_redirect,
-        generic_index_handler,
+        generic_detail_handler, generic_detail_redirect, generic_index_handler,
         generic_index_root_handler, generic_latest_handler, generic_latest_page_handler,
-        generic_latest_slideshow_handler, generic_oldest_handler,
-        generic_oldest_page_handler, generic_oldest_slideshow_handler,
-        generic_random_handler, generic_random_slideshow_handler,
-        generic_search_slideshow_handler, generic_tag_handler,
-        generic_tag_page_handler, generic_tag_slideshow_handler,
-        generic_tags_index_handler, media_viewer_fragment_handler,
-        remote_asset_proxy_handler, RemoteAssetBaseUrl,
-        search_form_handler,
-        search_results_handler, serve_crawled_json, SiteRenderer, SiteSource,
+        generic_latest_slideshow_handler, generic_latest_slideshow_redirect_handler,
+        generic_oldest_handler, generic_oldest_page_handler, generic_oldest_slideshow_handler,
+        generic_oldest_slideshow_redirect_handler, generic_random_handler,
+        generic_random_slideshow_handler, generic_random_slideshow_redirect_handler,
+        generic_search_slideshow_handler, generic_search_slideshow_redirect_handler,
+        generic_tag_handler, generic_tag_page_handler, generic_tag_slideshow_handler,
+        generic_tag_slideshow_redirect_handler, generic_tags_index_handler,
+        media_viewer_fragment_handler, remote_asset_proxy_handler, search_form_handler,
+        search_results_handler, serve_crawled_json, RemoteAssetBaseUrl, SiteRenderer, SiteSource,
     },
     serve_static_file, thread_safe_work_dir, workdir,
 };
@@ -98,7 +94,7 @@ async fn root_index_handler(
     sites_with_updates
         .sort_by_key(|(_, latest_update)| std::cmp::Reverse(latest_update.unwrap_or(0)));
 
-    return Ok(html! {
+    Ok(html! {
         html {
             head {
                 (handlers::scripts())
@@ -161,7 +157,7 @@ async fn root_index_handler(
                 }
             }
         }
-    });
+    })
 }
 
 #[get("/sites.json")]
@@ -186,7 +182,7 @@ async fn run() -> errors::Result<()> {
         Commands::Bake { work_dirs } => {
             println!("Loading WorkDirs...");
             let mut work_dirs_vec = vec![];
-            for work_dir in work_dirs.into_iter() {
+            for work_dir in work_dirs.iter() {
                 println!("Loading WorkDir: {}", work_dir);
                 let work_dir = WorkDir::new(work_dir.to_string()).expect("Failed to load WorkDir");
                 work_dirs_vec.push(work_dir);
@@ -203,16 +199,15 @@ async fn run() -> errors::Result<()> {
         Commands::Serve { work_dirs } => {
             println!("Loading WorkDirs...");
             let mut work_dirs_vec = vec![];
-            for work_dir in work_dirs.into_iter() {
+            for work_dir in work_dirs.iter() {
                 println!("Loading WorkDir: {}", work_dir);
                 // Load on a separate OS thread so reqwest::blocking doesn't
                 // conflict with the actix async runtime we're inside of.
                 let wd_path = work_dir.to_string();
-                let work_dir = thread::spawn(move || {
-                    WorkDir::new(wd_path).expect("Failed to load WorkDir")
-                })
-                .join()
-                .expect("WorkDir loading thread panicked");
+                let work_dir =
+                    thread::spawn(move || WorkDir::new(wd_path).expect("Failed to load WorkDir"))
+                        .join()
+                        .expect("WorkDir loading thread panicked");
                 let threadsafe_work_dir = ThreadSafeWorkDirImpl::new(work_dir);
                 let update_clone = threadsafe_work_dir.clone();
                 work_dirs_vec.push(threadsafe_work_dir);
@@ -278,11 +273,9 @@ async fn run() -> errors::Result<()> {
                     .service(root_index_handler)
                     .service(sites_json_handler);
 
-                let renderers = vec![
-                    handlers::SiteRendererType::Blog,
+                let renderers = [handlers::SiteRendererType::Blog,
                     handlers::SiteRendererType::Booru,
-                    handlers::SiteRendererType::Reddit,
-                ];
+                    handlers::SiteRendererType::Reddit];
 
                 let site_sources = work_dirs_vec
                     .iter()
@@ -301,7 +294,7 @@ async fn run() -> errors::Result<()> {
                         app = app.service(
                             web::scope(&format!("{}/{}", slug, renderer.get_prefix()))
                                 .app_data(web::Data::new(site_source.clone()))
-                                .app_data(web::Data::new(renderer.clone()))
+                                .app_data(web::Data::new(*renderer))
                                 .app_data(web::Data::new(WorkDirPrefix(slug.clone())))
                                 .service(generic_index_handler)
                                 .service(generic_index_root_handler)
@@ -349,9 +342,7 @@ async fn run() -> errors::Result<()> {
                                 } else if let Some(remote_url) = site_source.get_remote_url() {
                                     // Remote site: proxy asset requests
                                     scope
-                                        .app_data(web::Data::new(RemoteAssetBaseUrl(
-                                            remote_url,
-                                        )))
+                                        .app_data(web::Data::new(RemoteAssetBaseUrl(remote_url)))
                                         .route(
                                             "/assets/{path:.*}",
                                             web::get().to(remote_asset_proxy_handler),

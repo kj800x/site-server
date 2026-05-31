@@ -28,8 +28,8 @@ impl ThreadSafeWorkDir {
         if let Some(ref remote_url) = remote_url {
             // Remote site: check version endpoint
             let version_url = format!("{}/v1/version", remote_url);
-            let version_result = reqwest::blocking::get(&version_url)
-                .and_then(|r| r.json::<serde_json::Value>());
+            let version_result =
+                reqwest::blocking::get(&version_url).and_then(|r| r.json::<serde_json::Value>());
             match version_result {
                 Ok(version) => {
                     let latest_ts = version
@@ -69,7 +69,7 @@ impl ThreadSafeWorkDir {
             }
         } else {
             // Local site: existing file mtime check
-            let latest_ts = std::fs::metadata(&workdir_path.join("crawled.json"))
+            let latest_ts = std::fs::metadata(workdir_path.join("crawled.json"))
                 .ok()
                 .and_then(|m| m.modified().ok())
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())

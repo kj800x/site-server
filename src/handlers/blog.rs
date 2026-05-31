@@ -8,15 +8,20 @@ use crate::handlers::{calculate_item_index, ExtensionFix, Fa, PaginatorPrefix};
 use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
 
 // Helper functions for rendering blog components
-fn blog_post_card(item: &CrawlItem, site_prefix: &str, config: &ListingPageConfig, position_in_page: usize) -> Markup {
+fn blog_post_card(
+    item: &CrawlItem,
+    site_prefix: &str,
+    config: &ListingPageConfig,
+    position_in_page: usize,
+) -> Markup {
     let time = Utc
-        .timestamp_millis_opt(item.source_published as i64)
+        .timestamp_millis_opt(item.source_published)
         .unwrap();
     // Use item's source site for asset paths
     let asset_site = &item.site_settings.site_slug;
     let slideshow_index = calculate_item_index(config, position_in_page);
-    let first_file_id = crate::handlers::common::get_first_downloaded_file_id(item)
-        .unwrap_or_default();
+    let first_file_id =
+        crate::handlers::common::get_first_downloaded_file_id(item).unwrap_or_default();
     let slideshow_url_path = PageUrlState::slideshow(
         site_prefix.to_string(),
         "blog".to_string(),
@@ -24,7 +29,8 @@ fn blog_post_card(item: &CrawlItem, site_prefix: &str, config: &ListingPageConfi
         slideshow_index,
         first_file_id.clone(),
         ViewMode::Normal,
-    ).to_url();
+    )
+    .to_url();
 
     html! {
         article.blog_post_card {
@@ -139,7 +145,7 @@ pub fn render_detail_page(
     // Use item's source site for asset paths
     let asset_site = &item.site_settings.site_slug;
     let time = Utc
-        .timestamp_millis_opt(item.source_published as i64)
+        .timestamp_millis_opt(item.source_published)
         .unwrap();
 
     let content = html! {
@@ -276,15 +282,13 @@ pub fn render_slideshow_detail_page(
     // Use item's source site for asset paths
     let asset_site = &item.site_settings.site_slug;
     let time = Utc
-        .timestamp_millis_opt(item.source_published as i64)
+        .timestamp_millis_opt(item.source_published)
         .unwrap();
 
     // Get file_id for permalink
     let file_id = item
         .flat_files()
-        .into_iter()
-        .filter(|(_, f)| f.is_downloaded())
-        .next()
+        .into_iter().find(|(_, f)| f.is_downloaded())
         .map(|(id, _)| id);
 
     let content = html! {

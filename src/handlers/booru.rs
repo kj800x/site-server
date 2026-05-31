@@ -33,12 +33,17 @@ fn booru_layout(title: &str, content: Markup, site: &str, route: &str) -> Markup
     }
 }
 
-fn item_thumbnail(item: &CrawlItem, site_prefix: &str, config: &ListingPageConfig, position_in_page: usize) -> Markup {
+fn item_thumbnail(
+    item: &CrawlItem,
+    site_prefix: &str,
+    config: &ListingPageConfig,
+    position_in_page: usize,
+) -> Markup {
     // Use item's source site for asset paths
     let asset_site = &item.site_settings.site_slug;
     let slideshow_index = calculate_item_index(config, position_in_page);
-    let first_file_id = crate::handlers::common::get_first_downloaded_file_id(item)
-        .unwrap_or_default();
+    let first_file_id =
+        crate::handlers::common::get_first_downloaded_file_id(item).unwrap_or_default();
     let slideshow_url_path = PageUrlState::slideshow(
         site_prefix.to_string(),
         "booru".to_string(),
@@ -46,7 +51,8 @@ fn item_thumbnail(item: &CrawlItem, site_prefix: &str, config: &ListingPageConfi
         slideshow_index,
         first_file_id.clone(),
         ViewMode::Normal,
-    ).to_url();
+    )
+    .to_url();
 
     html! {
         a.item_thumb_container href=(slideshow_url_path) {
@@ -201,8 +207,7 @@ pub fn render_tags_page(
 pub fn render_archive_page(site_prefix: &str, archive: &Vec<ArchiveYear>, route: &str) -> Markup {
     let archive_months = archive
         .iter()
-        .map(|year| year.months.iter())
-        .flatten()
+        .flat_map(|year| year.months.iter())
         .collect::<Vec<_>>();
 
     let content = html! {
@@ -239,9 +244,7 @@ pub fn render_slideshow_detail_page(
     // Get file_id for permalink
     let file_id = item
         .flat_files()
-        .into_iter()
-        .filter(|(_, f)| f.is_downloaded())
-        .next()
+        .into_iter().find(|(_, f)| f.is_downloaded())
         .map(|(id, _)| id);
 
     let content = html! {

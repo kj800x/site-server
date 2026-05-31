@@ -37,10 +37,7 @@ impl JwtKeys {
     }
 }
 
-pub fn issue_token(
-    keys: &JwtKeys,
-    username: &str,
-) -> Result<String, jsonwebtoken::errors::Error> {
+pub fn issue_token(keys: &JwtKeys, username: &str) -> Result<String, jsonwebtoken::errors::Error> {
     let now = OffsetDateTime::now_utc().unix_timestamp();
     let claims = Claims {
         sub: username.to_string(),
@@ -50,10 +47,7 @@ pub fn issue_token(
     encode(&Header::new(Algorithm::HS256), &claims, &keys.encoding)
 }
 
-pub fn validate_token(
-    keys: &JwtKeys,
-    token: &str,
-) -> Result<Claims, jsonwebtoken::errors::Error> {
+pub fn validate_token(keys: &JwtKeys, token: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
     let validation = Validation::new(Algorithm::HS256);
     decode::<Claims>(token, &keys.decoding, &validation).map(|d| d.claims)
 }
