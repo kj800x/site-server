@@ -44,15 +44,15 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // File navigation (within item): Arrow Up/Down
-    if (e.key === 'ArrowDown' && !e.shiftKey) {
+    // File navigation (within item): Arrow Left/Right
+    if (e.key === 'ArrowRight' && !e.shiftKey) {
       if (fileNext) {
         e.preventDefault();
         navigateToLink(fileNext);
       }
       return;
     }
-    if (e.key === 'ArrowUp' && !e.shiftKey) {
+    if (e.key === 'ArrowLeft' && !e.shiftKey) {
       if (filePrev) {
         e.preventDefault();
         navigateToLink(filePrev);
@@ -60,15 +60,15 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Item navigation (slideshow): Arrow Left/Right
-    if (e.key === 'ArrowRight' && !e.shiftKey) {
+    // Item navigation (slideshow): Arrow Up/Down
+    if (e.key === 'ArrowDown' && !e.shiftKey) {
       if (itemNext) {
         e.preventDefault();
         navigateToLink(itemNext);
       }
       return;
     }
-    if (e.key === 'ArrowLeft' && !e.shiftKey) {
+    if (e.key === 'ArrowUp' && !e.shiftKey) {
       if (itemPrev) {
         e.preventDefault();
         navigateToLink(itemPrev);
@@ -76,15 +76,15 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Shift + Arrow Up/Down: first/last file
-    if (e.key === 'ArrowUp' && e.shiftKey) {
+    // Shift + Arrow Left/Right: first/last file
+    if (e.key === 'ArrowLeft' && e.shiftKey) {
       if (fileFirst) {
         e.preventDefault();
         navigateToLink(fileFirst);
       }
       return;
     }
-    if (e.key === 'ArrowDown' && e.shiftKey) {
+    if (e.key === 'ArrowRight' && e.shiftKey) {
       if (fileLast) {
         e.preventDefault();
         navigateToLink(fileLast);
