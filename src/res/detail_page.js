@@ -106,6 +106,31 @@ document.addEventListener('DOMContentLoaded', () => {
       lastShiftPress = now;
       return;
     }
+    // Any other key in between (e.g. Shift+Enter twice) isn't a double-tap
+    lastShiftPress = 0;
+
+    // Shift + Enter: toggle focus between the video player and the page
+    const video = document.querySelector('video.post_video');
+    const videoFocused = video && document.activeElement === video;
+    if (e.key === 'Enter' && e.shiftKey && video) {
+      e.preventDefault();
+      if (videoFocused) {
+        video.blur();
+      } else {
+        video.focus();
+      }
+      return;
+    }
+
+    // While the player has focus, arrows belong to its native seek/volume
+    // controls, and Escape hands focus back to the page
+    if (videoFocused) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        video.blur();
+      }
+      return;
+    }
 
     // File navigation (within item): Arrow Left/Right
     if (e.key === 'ArrowRight' && !e.shiftKey) {
