@@ -2,9 +2,7 @@ use actix_web::web;
 
 // Common error response for locked workdir
 pub fn workdir_locked_error() -> actix_web::Error {
-    actix_web::error::ErrorServiceUnavailable(
-        "Work directory is locked",
-    )
+    actix_web::error::ErrorServiceUnavailable("Work directory is locked")
 }
 
 // Helper function to get workdir from ThreadSafeWorkDir

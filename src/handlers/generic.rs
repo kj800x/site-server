@@ -52,12 +52,7 @@ fn resolve_listing_page(site_source: &SiteSource, mode: &ListingPageMode) -> Vec
 }
 
 fn apply_selection(items: &[CrawlItem], config: &ListingPageConfig) -> Vec<CrawlItem> {
-    let mut items = items.to_vec();
-    match config.ordering {
-        ListingPageOrdering::NewestFirst => items.sort_by_key(|item| -item.source_published),
-        ListingPageOrdering::OldestFirst => items.sort_by_key(|item| item.source_published),
-        ListingPageOrdering::Random => items.shuffle(&mut rand::thread_rng()),
-    };
+    let items = apply_ordering(items, &config.ordering);
     let start = (config.page - 1) * config.per_page;
     let end = start + config.per_page;
     if end > items.len() {
@@ -72,18 +67,10 @@ fn apply_ordering(items: &[CrawlItem], ordering: &ListingPageOrdering) -> Vec<Cr
     match ordering {
         ListingPageOrdering::NewestFirst => items.sort_by_key(|item| -item.source_published),
         ListingPageOrdering::OldestFirst => items.sort_by_key(|item| item.source_published),
-        ListingPageOrdering::Random => {
-            // Use a deterministic seed based on the items themselves for consistency
-            // This ensures the same random order is used across requests
-            use std::collections::hash_map::DefaultHasher;
-            use std::hash::{Hash, Hasher};
-            let mut hasher = DefaultHasher::new();
-            items.len().hash(&mut hasher);
-            for item in &items {
-                item.key.hash(&mut hasher);
-            }
-            let seed = hasher.finish();
-            let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+        ListingPageOrdering::Random { seed } => {
+            // Sort first so the shuffle only depends on the seed, not on load order
+            items.sort_by(|a, b| a.key.cmp(&b.key));
+            let mut rng = rand::rngs::StdRng::seed_from_u64(*seed as u64);
             items.shuffle(&mut rng);
         }
     };
@@ -116,24 +103,62 @@ pub async fn generic_index_root_handler(
         .finish()
 }
 
-#[get("/random")]
-pub async fn generic_random_handler(
-    renderer: web::Data<SiteRendererType>,
-    site_source: web::Data<SiteSource>,
-) -> impl Responder {
-    let renderer = renderer.into_inner();
+fn random_listing_page(
+    renderer: &SiteRendererType,
+    site_source: &SiteSource,
+    seed: u32,
+    page: usize,
+) -> maud::Markup {
     let site_prefix = site_source.slug();
-    let items = resolve_listing_page(&site_source, &ListingPageMode::All);
+    let items = resolve_listing_page(site_source, &ListingPageMode::All);
     let config = ListingPageConfig {
         mode: ListingPageMode::All,
-        ordering: ListingPageOrdering::Random,
-        page: 1,
+        ordering: ListingPageOrdering::Random { seed },
+        page,
         per_page: 15,
         total: items.len(),
     };
     let items = apply_selection(&items, &config);
 
     renderer.render_listing_page(&site_prefix, config, &items, "/random")
+}
+
+/// Picks a fresh seed and redirects, so reloads and back-navigation keep the same order
+#[get("/random")]
+pub async fn generic_random_handler(
+    renderer: web::Data<SiteRendererType>,
+    site_source: web::Data<SiteSource>,
+) -> impl Responder {
+    HttpResponse::SeeOther()
+        .append_header((
+            "Location",
+            format!(
+                "/{}/{}/random/{}",
+                site_source.slug(),
+                renderer.get_prefix(),
+                rand::random::<u32>()
+            ),
+        ))
+        .finish()
+}
+
+#[get("/random/{seed:\\d+}")]
+pub async fn generic_random_seed_handler(
+    renderer: web::Data<SiteRendererType>,
+    site_source: web::Data<SiteSource>,
+    seed: web::Path<u32>,
+) -> impl Responder {
+    random_listing_page(&renderer, &site_source, seed.into_inner(), 1)
+}
+
+#[get("/random/{seed:\\d+}/{page:\\d+}")]
+pub async fn generic_random_page_handler(
+    renderer: web::Data<SiteRendererType>,
+    site_source: web::Data<SiteSource>,
+    path: web::Path<(u32, usize)>,
+) -> impl Responder {
+    let (seed, page) = path.into_inner();
+    random_listing_page(&renderer, &site_source, seed, page)
 }
 
 #[get("/latest")]
@@ -355,9 +380,7 @@ pub async fn generic_archive_index_handler(
         let mut archive: HashMap<(i32, u8), usize> = HashMap::new();
 
         for item in items {
-            let time = Utc
-                .timestamp_millis_opt(item.source_published)
-                .unwrap();
+            let time = Utc.timestamp_millis_opt(item.source_published).unwrap();
             let year = time.year();
             let month = time.month() as u8;
             *archive.entry((year, month)).or_insert(0) += 1;
@@ -1218,19 +1241,41 @@ pub async fn generic_search_slideshow_handler(
     HttpResponse::Ok().body(markup.0)
 }
 
-#[get("/random/slideshow/{i}")]
+/// Old seedless slideshow URLs: start a fresh shuffle at the same position
+#[get("/random/slideshow/{i}{rest:(/.*)?}")]
+pub async fn generic_random_legacy_slideshow_handler(
+    renderer: web::Data<SiteRendererType>,
+    site_source: web::Data<SiteSource>,
+    path: web::Path<(usize, String)>,
+) -> impl Responder {
+    let (i, _) = path.into_inner();
+    HttpResponse::SeeOther()
+        .append_header((
+            "Location",
+            format!(
+                "/{}/{}/random/{}/slideshow/{}",
+                site_source.slug(),
+                renderer.get_prefix(),
+                rand::random::<u32>(),
+                i
+            ),
+        ))
+        .finish()
+}
+
+#[get("/random/{seed:\\d+}/slideshow/{i}")]
 pub async fn generic_random_slideshow_redirect_handler(
     renderer: web::Data<SiteRendererType>,
     site_source: web::Data<SiteSource>,
-    index: web::Path<usize>,
+    path: web::Path<(u32, usize)>,
 ) -> impl Responder {
     let renderer = renderer.into_inner();
     let site_prefix = site_source.slug();
     let rendering_prefix = renderer.get_prefix();
-    let i = index.into_inner();
+    let (seed, i) = path.into_inner();
 
     let items = resolve_listing_page(&site_source, &ListingPageMode::All);
-    let ordered_items = apply_ordering(&items, &ListingPageOrdering::Random);
+    let ordered_items = apply_ordering(&items, &ListingPageOrdering::Random { seed });
 
     if ordered_items.is_empty() || i == 0 || i > ordered_items.len() {
         return HttpResponse::NotFound().body("No items found");
@@ -1244,9 +1289,10 @@ pub async fn generic_random_slideshow_redirect_handler(
             .append_header((
                 "Location",
                 format!(
-                    "/{}/{}/random/slideshow/{}/{}",
+                    "/{}/{}/random/{}/slideshow/{}/{}",
                     site_prefix,
                     rendering_prefix,
+                    seed,
                     i,
                     encode(&file_id)
                 ),
@@ -1257,14 +1303,14 @@ pub async fn generic_random_slideshow_redirect_handler(
     }
 }
 
-#[get("/random/slideshow/{i}/{file_id}")]
+#[get("/random/{seed:\\d+}/slideshow/{i}/{file_id}")]
 pub async fn generic_random_slideshow_handler(
     renderer: web::Data<SiteRendererType>,
     site_source: web::Data<SiteSource>,
-    path: web::Path<(usize, String)>,
+    path: web::Path<(u32, usize, String)>,
     query: web::Query<ViewModeQuery>,
 ) -> impl Responder {
-    let (i, file_id_param) = path.into_inner();
+    let (seed, i, file_id_param) = path.into_inner();
     let renderer = renderer.into_inner();
     let site_prefix = site_source.slug();
     let rendering_prefix = renderer.get_prefix();
@@ -1273,13 +1319,16 @@ pub async fn generic_random_slideshow_handler(
         return HttpResponse::SeeOther()
             .append_header((
                 "Location",
-                format!("/{}/{}/random/slideshow/1", site_prefix, rendering_prefix),
+                format!(
+                    "/{}/{}/random/{}/slideshow/1",
+                    site_prefix, rendering_prefix, seed
+                ),
             ))
             .finish();
     }
 
     let items = resolve_listing_page(&site_source, &ListingPageMode::All);
-    let ordered_items = apply_ordering(&items, &ListingPageOrdering::Random);
+    let ordered_items = apply_ordering(&items, &ListingPageOrdering::Random { seed });
 
     if ordered_items.is_empty() {
         return HttpResponse::NotFound().body("No items found");
@@ -1290,9 +1339,10 @@ pub async fn generic_random_slideshow_handler(
             .append_header((
                 "Location",
                 format!(
-                    "/{}/{}/random/slideshow/{}",
+                    "/{}/{}/random/{}/slideshow/{}",
                     site_prefix,
                     rendering_prefix,
+                    seed,
                     ordered_items.len()
                 ),
             ))
@@ -1325,9 +1375,10 @@ pub async fn generic_random_slideshow_handler(
                     .append_header((
                         "Location",
                         format!(
-                            "/{}/{}/random/slideshow/{}/{}",
+                            "/{}/{}/random/{}/slideshow/{}/{}",
                             site_prefix,
                             rendering_prefix,
+                            seed,
                             i,
                             encode(&first_file_id)
                         ),
@@ -1342,7 +1393,7 @@ pub async fn generic_random_slideshow_handler(
     let is_full = query.view.as_deref() == Some("full");
     let config = ListingPageConfig {
         mode: ListingPageMode::All,
-        ordering: ListingPageOrdering::Random,
+        ordering: ListingPageOrdering::Random { seed },
         page: 1,
         per_page: 15,
         total: ordered_items.len(),

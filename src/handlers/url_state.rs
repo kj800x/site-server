@@ -149,8 +149,11 @@ impl PageUrlState {
                         ListingPageOrdering::OldestFirst => {
                             format!("/{}/oldest/slideshow/{}", self.rendering_prefix, index)
                         }
-                        ListingPageOrdering::Random => {
-                            format!("/{}/random/slideshow/{}", self.rendering_prefix, index)
+                        ListingPageOrdering::Random { seed } => {
+                            format!(
+                                "/{}/random/{}/slideshow/{}",
+                                self.rendering_prefix, seed, index
+                            )
                         }
                     },
                     ListingPageMode::ByTag { tag } => {
@@ -230,8 +233,11 @@ impl PageUrlState {
                         ListingPageOrdering::OldestFirst => {
                             format!("/{}/oldest/slideshow/{}", self.rendering_prefix, index)
                         }
-                        ListingPageOrdering::Random => {
-                            format!("/{}/random/slideshow/{}", self.rendering_prefix, index)
+                        ListingPageOrdering::Random { seed } => {
+                            format!(
+                                "/{}/random/{}/slideshow/{}",
+                                self.rendering_prefix, seed, index
+                            )
                         }
                     },
                     ListingPageMode::ByTag { tag } => {

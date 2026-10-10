@@ -167,7 +167,7 @@ pub fn render_listing_page(
         ListingPageMode::All => match config.ordering {
             ListingPageOrdering::NewestFirst => "Newest Posts".to_string(),
             ListingPageOrdering::OldestFirst => "Oldest Posts".to_string(),
-            ListingPageOrdering::Random => "Random Posts".to_string(),
+            ListingPageOrdering::Random { .. } => "Random Posts".to_string(),
         },
         ListingPageMode::ByTag { tag } => format!("Posts tagged \"{}\"", tag),
         ListingPageMode::ByMonth { year, month } => {
@@ -189,7 +189,6 @@ pub fn render_listing_page(
                     (reddit_post_card(item, site_prefix, &config, idx))
                 }
             }
-            // FIXME: Don't include a paginator if the sort order is random
             (super::paginator(config.page, config.total, config.per_page, &config.paginator_prefix(site_prefix, "r")))
         }
         .reddit_right_bar {}
@@ -559,7 +558,8 @@ pub fn render_slideshow_detail_page(
     // Get file_id for permalink
     let file_id = item
         .flat_files()
-        .into_iter().find(|(_, f)| f.is_downloaded())
+        .into_iter()
+        .find(|(_, f)| f.is_downloaded())
         .map(|(id, _)| id);
 
     let toggle_url = url_state.toggle_view_mode().to_url();

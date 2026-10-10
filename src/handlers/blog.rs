@@ -14,9 +14,7 @@ fn blog_post_card(
     config: &ListingPageConfig,
     position_in_page: usize,
 ) -> Markup {
-    let time = Utc
-        .timestamp_millis_opt(item.source_published)
-        .unwrap();
+    let time = Utc.timestamp_millis_opt(item.source_published).unwrap();
     // Use item's source site for asset paths
     let asset_site = &item.site_settings.site_slug;
     let slideshow_index = calculate_item_index(config, position_in_page);
@@ -144,9 +142,7 @@ pub fn render_detail_page(
     let route = url_state.to_route();
     // Use item's source site for asset paths
     let asset_site = &item.site_settings.site_slug;
-    let time = Utc
-        .timestamp_millis_opt(item.source_published)
-        .unwrap();
+    let time = Utc.timestamp_millis_opt(item.source_published).unwrap();
 
     let content = html! {
         article.blog_post {
@@ -281,14 +277,13 @@ pub fn render_slideshow_detail_page(
     let route = url_state.to_route();
     // Use item's source site for asset paths
     let asset_site = &item.site_settings.site_slug;
-    let time = Utc
-        .timestamp_millis_opt(item.source_published)
-        .unwrap();
+    let time = Utc.timestamp_millis_opt(item.source_published).unwrap();
 
     // Get file_id for permalink
     let file_id = item
         .flat_files()
-        .into_iter().find(|(_, f)| f.is_downloaded())
+        .into_iter()
+        .find(|(_, f)| f.is_downloaded())
         .map(|(id, _)| id);
 
     let content = html! {

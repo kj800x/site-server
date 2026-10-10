@@ -26,12 +26,14 @@ use site_server::{
         generic_latest_slideshow_handler, generic_latest_slideshow_redirect_handler,
         generic_oldest_handler, generic_oldest_page_handler, generic_oldest_slideshow_handler,
         generic_oldest_slideshow_redirect_handler, generic_random_handler,
-        generic_random_slideshow_handler, generic_random_slideshow_redirect_handler,
-        generic_search_slideshow_handler, generic_search_slideshow_redirect_handler,
-        generic_tag_handler, generic_tag_page_handler, generic_tag_slideshow_handler,
-        generic_tag_slideshow_redirect_handler, generic_tags_index_handler,
-        media_viewer_fragment_handler, remote_asset_proxy_handler, search_form_handler,
-        search_results_handler, serve_crawled_json, RemoteAssetBaseUrl, SiteRenderer, SiteSource,
+        generic_random_legacy_slideshow_handler, generic_random_page_handler,
+        generic_random_seed_handler, generic_random_slideshow_handler,
+        generic_random_slideshow_redirect_handler, generic_search_slideshow_handler,
+        generic_search_slideshow_redirect_handler, generic_tag_handler, generic_tag_page_handler,
+        generic_tag_slideshow_handler, generic_tag_slideshow_redirect_handler,
+        generic_tags_index_handler, media_viewer_fragment_handler, remote_asset_proxy_handler,
+        search_form_handler, search_results_handler, serve_crawled_json, RemoteAssetBaseUrl,
+        SiteRenderer, SiteSource,
     },
     serve_static_file, thread_safe_work_dir, workdir,
 };
@@ -273,9 +275,11 @@ async fn run() -> errors::Result<()> {
                     .service(root_index_handler)
                     .service(sites_json_handler);
 
-                let renderers = [handlers::SiteRendererType::Blog,
+                let renderers = [
+                    handlers::SiteRendererType::Blog,
                     handlers::SiteRendererType::Booru,
-                    handlers::SiteRendererType::Reddit];
+                    handlers::SiteRendererType::Reddit,
+                ];
 
                 let site_sources = work_dirs_vec
                     .iter()
@@ -299,6 +303,8 @@ async fn run() -> errors::Result<()> {
                                 .service(generic_index_handler)
                                 .service(generic_index_root_handler)
                                 .service(generic_random_handler)
+                                .service(generic_random_seed_handler)
+                                .service(generic_random_page_handler)
                                 .service(generic_latest_page_handler)
                                 .service(generic_latest_handler)
                                 .service(generic_oldest_page_handler)
@@ -314,6 +320,7 @@ async fn run() -> errors::Result<()> {
                                 .service(generic_latest_slideshow_handler)
                                 .service(generic_oldest_slideshow_redirect_handler)
                                 .service(generic_oldest_slideshow_handler)
+                                .service(generic_random_legacy_slideshow_handler)
                                 .service(generic_random_slideshow_redirect_handler)
                                 .service(generic_random_slideshow_handler)
                                 .service(generic_tag_slideshow_redirect_handler)

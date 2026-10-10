@@ -96,8 +96,7 @@ pub fn format_year_month(year: i32, month: u8) -> String {
 }
 
 pub fn timeago(timestamp: u64) -> Markup {
-    let dt =
-        chrono::DateTime::from_timestamp_millis(timestamp as i64).unwrap_or_else(Utc::now);
+    let dt = chrono::DateTime::from_timestamp_millis(timestamp as i64).unwrap_or_else(Utc::now);
 
     let now = Utc::now().timestamp_millis() as u64;
     let diff = now - timestamp;
@@ -406,7 +405,10 @@ pub enum ListingPageMode {
 pub enum ListingPageOrdering {
     NewestFirst,
     OldestFirst,
-    Random,
+    /// Shuffled with a seed carried in the URL, so listing and slideshow agree on the order
+    Random {
+        seed: u32,
+    },
 }
 
 pub struct ListingPageConfig {
@@ -431,8 +433,8 @@ impl PaginatorPrefix for ListingPageConfig {
                 ListingPageOrdering::OldestFirst => {
                     format!("/{}/{}/oldest", site_prefix, rendering_prefix)
                 }
-                ListingPageOrdering::Random => {
-                    format!("/{}/{}/random", site_prefix, rendering_prefix)
+                ListingPageOrdering::Random { seed } => {
+                    format!("/{}/{}/random/{}", site_prefix, rendering_prefix, seed)
                 }
             },
             ListingPageMode::ByTag { tag } => {

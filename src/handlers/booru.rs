@@ -244,7 +244,8 @@ pub fn render_slideshow_detail_page(
     // Get file_id for permalink
     let file_id = item
         .flat_files()
-        .into_iter().find(|(_, f)| f.is_downloaded())
+        .into_iter()
+        .find(|(_, f)| f.is_downloaded())
         .map(|(id, _)| id);
 
     let content = html! {
