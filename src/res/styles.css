@@ -856,6 +856,10 @@ dd {
     overflow: hidden
   }
 
+  .media_viewer {
+    margin-top: 0;
+  }
+
   .media_viewer>.quit {
     position: absolute;
     top: 20px;
@@ -899,6 +903,15 @@ dd {
     max-height: 100vh;
     aspect-ratio: unset;
     object-fit: contain;
+    /* Drop the inline baseline gap so full-height media isn't nudged off-screen */
+    vertical-align: top;
+  }
+
+  /* Fill the viewport up front and letterbox inside it, so the player has its
+     final size before the video's dimensions are known */
+  .post_video {
+    width: 100vw;
+    height: 100vh;
   }
 }
 
