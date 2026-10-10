@@ -14,9 +14,72 @@ document.addEventListener('DOMContentLoaded', () => {
   const toggleFull = findLink('data-toggle-full');
   const quit = findLink('data-is-quit');
 
+  // Carry video playback state across a full/normal view toggle, which is a
+  // page navigation and would otherwise restart the video from the beginning
+  const VIDEO_STATE_KEY = 'toggle-video-state';
+  const VIDEO_STATE_MAX_AGE = 10000; // milliseconds
+
+  const videoSrc = (video) => video.currentSrc || video.querySelector('source')?.src;
+
+  const saveVideoState = () => {
+    const video = document.querySelector('video.post_video');
+    if (!video || !videoSrc(video)) return;
+    try {
+      sessionStorage.setItem(VIDEO_STATE_KEY, JSON.stringify({
+        src: videoSrc(video),
+        time: video.currentTime,
+        paused: video.paused,
+        muted: video.muted,
+        volume: video.volume,
+        savedAt: Date.now(),
+      }));
+    } catch (e) {}
+  };
+
+  const restoreVideoState = () => {
+    const video = document.querySelector('video.post_video');
+    if (!video) return;
+    let state;
+    try {
+      state = JSON.parse(sessionStorage.getItem(VIDEO_STATE_KEY));
+      sessionStorage.removeItem(VIDEO_STATE_KEY);
+    } catch (e) {
+      return;
+    }
+    if (!state || Date.now() - state.savedAt > VIDEO_STATE_MAX_AGE) return;
+    if (videoSrc(video) !== state.src) return;
+
+    const apply = () => {
+      video.muted = state.muted;
+      video.volume = state.volume;
+      video.currentTime = state.time;
+      if (state.paused) {
+        video.pause();
+      } else {
+        video.play().catch(() => {});
+      }
+    };
+    if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
+      apply();
+    } else {
+      // Hold off autoplay so it doesn't flash the first frames before seeking
+      video.pause();
+      video.addEventListener('loadedmetadata', apply, { once: true });
+    }
+  };
+
+  if (document.prerendering) {
+    document.addEventListener('prerenderingchange', restoreVideoState, { once: true });
+  } else {
+    restoreVideoState();
+  }
+
   // Helper to navigate to a link
   const navigateToLink = (link) => {
     if (!link) return;
+    if (link.hasAttribute('data-toggle-full')) {
+      saveVideoState();
+    }
     if (link.hasAttribute('data-replace-history')) {
       window.location.replace(link.href);
     } else {
@@ -112,7 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const link = e.target.closest('a[data-replace-history]');
     if (link) {
       e.preventDefault();
-      window.location.replace(link.href);
+      navigateToLink(link);
     }
   });
 });
