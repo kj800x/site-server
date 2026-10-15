@@ -17,8 +17,8 @@ RUN touch src/main.rs && cargo build --release
 # Runtime Stage
 FROM alpine:latest AS runtime
 WORKDIR /app
-# Install runtime dependencies if needed
-# RUN apk add --no-cache ca-certificates
+# ffmpeg/ffprobe are used by the bake and remux commands
+RUN apk add --no-cache ffmpeg
 
 COPY --from=builder /usr/src/site-server/target/release/site-server ./site-server
 USER 1000
