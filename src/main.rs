@@ -12,7 +12,7 @@ use chrono::Utc;
 use clap::Parser;
 use opentelemetry::global;
 use opentelemetry_sdk::metrics::MeterProvider;
-use site_server::bake::Bake;
+use site_server::{bake, remux};
 use std::io::Read;
 use std::{thread, time::Duration};
 
@@ -54,8 +54,37 @@ struct StartTime(i64);
 
 #[derive(clap::Subcommand)]
 enum Commands {
-    Serve { work_dirs: Vec<String> },
-    Bake { work_dirs: Vec<String> },
+    Serve {
+        work_dirs: Vec<String>,
+    },
+    Bake {
+        work_dirs: Vec<String>,
+    },
+    /// Find MP4s that need a faststart remux to play quickly on the web, and
+    /// (with --apply) remux them in place. Without --apply nothing is written.
+    Remux {
+        /// Actually rewrite files. Without this, only report what would change.
+        #[arg(long)]
+        apply: bool,
+        #[arg(required = true)]
+        work_dirs: Vec<String>,
+    },
+}
+
+/// Load WorkDirs on a separate OS thread so reqwest::blocking (used for remote
+/// sites) doesn't conflict with the actix async runtime we're inside of.
+fn load_work_dirs(work_dirs: &[String]) -> Vec<WorkDir> {
+    println!("Loading WorkDirs...");
+    work_dirs
+        .iter()
+        .map(|work_dir| {
+            println!("Loading WorkDir: {}", work_dir);
+            let wd_path = work_dir.to_string();
+            thread::spawn(move || WorkDir::new(wd_path).expect("Failed to load WorkDir"))
+                .join()
+                .expect("WorkDir loading thread panicked")
+        })
+        .collect()
 }
 
 #[get("/healthz")]
@@ -182,19 +211,12 @@ async fn run() -> errors::Result<()> {
 
     match &cli.command {
         Commands::Bake { work_dirs } => {
-            println!("Loading WorkDirs...");
-            let mut work_dirs_vec = vec![];
-            for work_dir in work_dirs.iter() {
-                println!("Loading WorkDir: {}", work_dir);
-                let work_dir = WorkDir::new(work_dir.to_string()).expect("Failed to load WorkDir");
-                work_dirs_vec.push(work_dir);
-            }
+            bake::bake_work_dirs(&load_work_dirs(work_dirs));
+            Ok(())
+        }
 
-            for work_dir in work_dirs_vec.iter() {
-                println!("Baking WorkDir: {}", work_dir.config.label);
-                work_dir.bake_all();
-            }
-
+        Commands::Remux { apply, work_dirs } => {
+            remux::remux_all(&load_work_dirs(work_dirs), *apply);
             Ok(())
         }
 

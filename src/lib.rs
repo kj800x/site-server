@@ -51,6 +51,8 @@ pub mod bake;
 pub mod collections;
 pub mod errors;
 pub mod handlers;
+pub mod job_output;
+pub mod remux;
 pub mod reprocessors;
 pub mod search;
 pub mod serde;

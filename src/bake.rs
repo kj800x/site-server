@@ -2,6 +2,7 @@ use std::{cmp::min, path::PathBuf, process::Command};
 
 use crate::{
     errors::Error,
+    job_output::{run_label, Chip, JobOutput, Metric, MetricType},
     site::{CrawlItem, FileCrawlType},
     workdir::WorkDir,
 };
@@ -26,7 +27,7 @@ fn is_audio_only(filename: &str) -> bool {
     contains_audio && !contains_video
 }
 
-fn video_length(filename: &str) -> f64 {
+fn video_length(filename: &str) -> Option<f64> {
     let output = Command::new("ffprobe")
         .arg("-v")
         .arg("error")
@@ -40,19 +41,23 @@ fn video_length(filename: &str) -> f64 {
         .output()
         .expect("Failed to get video length");
 
-    let duration =
-        String::from_utf8(output.stdout).expect("Failed to parse ffprobe output as UTF-8");
-    let duration = duration
+    String::from_utf8_lossy(&output.stdout)
         .split_whitespace()
-        .next()
-        .expect("Failed to get duration from ffprobe output");
-    duration
+        .next()?
         .parse::<f64>()
-        .expect("Failed to parse duration as float")
+        .ok()
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct BakeStats {
+    pub created: usize,
+    pub not_created: usize,
+    pub skipped: usize,
+    pub no_usable_files: usize,
 }
 
 pub trait Bake {
-    fn bake_all(&self);
+    fn bake_all(&self) -> BakeStats;
 }
 
 impl FileCrawlType {
@@ -126,7 +131,10 @@ impl CrawlItem {
                     return Ok(());
                 }
 
-                let length = video_length(video_path_str);
+                let Some(length) = video_length(video_path_str) else {
+                    println!("{} has no readable duration, skipping thumbnail", filename);
+                    return Ok(());
+                };
                 let offset = (length / 3.0).round() as u64;
                 let duration = min(offset, 3);
 
@@ -203,7 +211,8 @@ impl CrawlItem {
 /// Ensure that all items have previews available. If an explicit preview was
 /// not provided by the site, attempt to generate a thumbnail.
 impl Bake for WorkDir {
-    fn bake_all(&self) {
+    fn bake_all(&self) -> BakeStats {
+        let mut stats = BakeStats::default();
         let items = self.crawled.clone();
         for item in items.values() {
             if item.previews.is_empty() {
@@ -220,12 +229,18 @@ impl Bake for WorkDir {
                     if !thumbnail_path.exists() {
                         item.create_thumbnail(&PathBuf::from(self.path.clone()), first_usable_file)
                             .expect("Failed to create thumbnail");
-                        println!(
-                            "{} created auto thumbnail ({})",
-                            item.key,
-                            thumbnail_path.display()
-                        );
+                        if thumbnail_path.exists() {
+                            stats.created += 1;
+                            println!(
+                                "{} created auto thumbnail ({})",
+                                item.key,
+                                thumbnail_path.display()
+                            );
+                        } else {
+                            stats.not_created += 1;
+                        }
                     } else {
+                        stats.skipped += 1;
                         println!(
                             "{} already has auto thumbnail ({})",
                             item.key,
@@ -233,11 +248,56 @@ impl Bake for WorkDir {
                         );
                     }
                 } else {
+                    stats.no_usable_files += 1;
                     println!("{} has no usable files", item.key);
                 }
             } else {
+                stats.skipped += 1;
                 println!("{} has explicit preview", item.key);
             }
         }
+        stats
     }
+}
+
+/// Bake every work dir and report the results as Jobfather job output.
+pub fn bake_work_dirs(work_dirs: &[WorkDir]) {
+    let job_output = JobOutput::detect();
+    let slugs: Vec<String> = work_dirs.iter().map(|w| w.config.slug.clone()).collect();
+    job_output.label(&run_label("bake", &slugs));
+
+    let mut total = BakeStats::default();
+    let mut metrics = vec![];
+    for work_dir in work_dirs {
+        println!("Baking WorkDir: {}", work_dir.config.label);
+        let stats = work_dir.bake_all();
+        total.created += stats.created;
+        total.not_created += stats.not_created;
+        total.skipped += stats.skipped;
+        total.no_usable_files += stats.no_usable_files;
+        metrics.push(Metric::new(
+            "site_server_bake_thumbnails_total",
+            stats.created as f64,
+            MetricType::Counter,
+            &[("site", work_dir.config.slug.as_str())],
+        ));
+    }
+
+    println!(
+        "Done. created={} not_created={} skipped={} no_usable_files={}",
+        total.created, total.not_created, total.skipped, total.no_usable_files
+    );
+
+    let mut chips = vec![
+        Chip::new("thumbnails created", total.created, Some("success")),
+        Chip::new("skipped", total.skipped, None),
+    ];
+    if total.not_created > 0 {
+        chips.push(Chip::new("not created", total.not_created, Some("warning")));
+    }
+    if total.no_usable_files > 0 {
+        chips.push(Chip::new("no usable files", total.no_usable_files, None));
+    }
+    job_output.chips(&chips);
+    job_output.metrics(&metrics);
 }
