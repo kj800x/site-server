@@ -52,15 +52,39 @@ impl maud::Render for Fa {
 }
 
 pub trait ExtensionFix {
+    /// The file actually served for a video: a transcoded `.mp4` sibling for
+    /// formats browsers can't play (e.g. `.wmv`), or the file itself for ones
+    /// they can (`.webm`).
     fn as_mp4(&self) -> String;
 }
 
 impl ExtensionFix for std::string::String {
     fn as_mp4(&self) -> String {
-        PathBuf::from(self)
-            .with_extension("mp4")
-            .to_string_lossy()
-            .to_string()
+        let path = PathBuf::from(self);
+        if path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("webm"))
+        {
+            return self.clone();
+        }
+        path.with_extension("mp4").to_string_lossy().to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ExtensionFix;
+
+    #[test]
+    fn as_mp4_coerces_unplayable_formats() {
+        assert_eq!("video/a.wmv".to_string().as_mp4(), "video/a.mp4");
+        assert_eq!("video/a.b.mp4".to_string().as_mp4(), "video/a.b.mp4");
+    }
+
+    #[test]
+    fn as_mp4_keeps_webm() {
+        assert_eq!("output/a.webm".to_string().as_mp4(), "output/a.webm");
+        assert_eq!("output/a.WEBM".to_string().as_mp4(), "output/a.WEBM");
     }
 }
 
