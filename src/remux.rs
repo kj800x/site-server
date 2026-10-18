@@ -1,12 +1,17 @@
 //! Detect MP4s that aren't laid out for progressive web playback and losslessly
 //! remux them (`ffmpeg -c copy -movflags +faststart`) in place.
 //!
-//! Two layouts are fixed:
-//! - `moov` after `mdat` (classic non-faststart file): players must fetch the
-//!   end of the file before playback can start.
+//! Only one layout is fixed:
 //! - Fragmented MP4 (`moof` atoms) with no `sidx` in front of them: FFmpeg's
 //!   demuxer (and so Chrome) walks every fragment, i.e. reads the whole file,
-//!   before playback can start.
+//!   before playback can start. A trailing `mfra` doesn't help.
+//!
+//! `moov` after `mdat` (classic non-faststart file) is reported but left alone:
+//! it only costs the player one extra range request to the end of the file.
+//!
+//! The file checked is the one the site actually serves for a video, which is
+//! always the `.mp4` path (see `ExtensionFix::as_mp4`), not the crawled
+//! original (e.g. a `.wmv`).
 
 use std::{
     fmt::Write as _,
@@ -20,6 +25,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::{
+    handlers::ExtensionFix,
     job_output::{human_bytes, run_label, Chip, JobOutput, Metric, MetricType},
     site::FileCrawlType,
     workdir::WorkDir,
@@ -38,7 +44,7 @@ pub enum Layout {
 
 impl Layout {
     pub fn needs_remux(&self) -> bool {
-        matches!(self, Layout::MoovAtEnd | Layout::FragmentedUnindexed)
+        matches!(self, Layout::FragmentedUnindexed)
     }
 }
 
@@ -177,14 +183,11 @@ fn remux_in_place(path: &Path) -> Result<(), String> {
 fn remux_to_temp_and_verify(path: &Path, temp: &Path) -> Result<(), String> {
     let before = probe(path)?;
 
-    let is_mov = path
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("mov"));
     let output = Command::new("ffmpeg")
         .args(["-nostdin", "-v", "error", "-y", "-i"])
         .arg(path)
         .args(["-map", "0", "-c", "copy", "-movflags", "+faststart"])
-        .args(["-f", if is_mov { "mov" } else { "mp4" }])
+        .args(["-f", "mp4"])
         .arg(temp)
         .output()
         .map_err(|e| format!("failed to run ffmpeg: {}", e))?;
@@ -244,6 +247,8 @@ struct SiteReport {
     slug: String,
     path: String,
     ok: usize,
+    /// Playable without a remux (one extra range request), so not rewritten.
+    moov_at_end: usize,
     needs_remux: usize,
     remuxed: usize,
     failed: usize,
@@ -251,7 +256,7 @@ struct SiteReport {
     unparseable: usize,
     missing: usize,
     rewrite_bytes: u64,
-    /// Every file that isn't `ok`.
+    /// Every file that isn't `ok` or `moov_at_end`.
     files: Vec<FileReport>,
 }
 
@@ -261,6 +266,8 @@ impl SiteReport {
     }
 }
 
+/// The files the site serves for downloaded videos: always the `.mp4` path,
+/// matching what the handlers put in `<source src>`.
 fn video_filenames(work_dir: &WorkDir) -> Vec<String> {
     let mut filenames = vec![];
     for item in work_dir.crawled.values() {
@@ -271,8 +278,9 @@ fn video_filenames(work_dir: &WorkDir) -> Vec<String> {
                 ..
             } = file
             {
-                if !filenames.contains(filename) {
-                    filenames.push(filename.clone());
+                let served = filename.as_mp4();
+                if !filenames.contains(&served) {
+                    filenames.push(served);
                 }
             }
         }
@@ -305,6 +313,10 @@ fn process_site(work_dir: &WorkDir, apply: bool) -> SiteReport {
                 report.ok += 1;
                 continue;
             }
+            Layout::MoovAtEnd => {
+                report.moov_at_end += 1;
+                continue;
+            }
             Layout::NotMp4 => report.not_mp4 += 1,
             Layout::Missing => report.missing += 1,
             Layout::Unparseable => {
@@ -315,7 +327,7 @@ fn process_site(work_dir: &WorkDir, apply: bool) -> SiteReport {
                     error.as_deref().unwrap_or("")
                 );
             }
-            Layout::MoovAtEnd | Layout::FragmentedUnindexed => {
+            Layout::FragmentedUnindexed => {
                 report.needs_remux += 1;
                 report.rewrite_bytes += size;
             }
@@ -371,15 +383,16 @@ fn markdown_report(reports: &[SiteReport], apply: bool) -> String {
     );
     let _ = writeln!(
         md,
-        "| Site | OK | Needs remux | Remuxed | Failed | Not MP4 | Unparseable | Missing | Rewrite size |"
+        "| Site | OK | Moov at end (ok) | Needs remux | Remuxed | Failed | Not MP4 | Unparseable | Missing | Rewrite size |"
     );
-    let _ = writeln!(md, "|---|---|---|---|---|---|---|---|---|");
+    let _ = writeln!(md, "|---|---|---|---|---|---|---|---|---|---|");
     for r in reports {
         let _ = writeln!(
             md,
-            "| {} | {} | {} | {} | {} | {} | {} | {} | {} |",
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |",
             r.slug,
             r.ok,
+            r.moov_at_end,
             r.needs_remux,
             r.remuxed,
             r.failed,
@@ -443,6 +456,7 @@ pub fn remux_all(work_dirs: &[WorkDir], apply: bool) {
 
     let sum = |f: fn(&SiteReport) -> usize| reports.iter().map(f).sum::<usize>();
     let ok = sum(|r| r.ok);
+    let moov_at_end = sum(|r| r.moov_at_end);
     let needs_remux = sum(|r| r.needs_remux);
     let remuxed = sum(|r| r.remuxed);
     let failed = sum(|r| r.failed);
@@ -453,8 +467,9 @@ pub fn remux_all(work_dirs: &[WorkDir], apply: bool) {
     let rewrite_bytes: u64 = reports.iter().map(|r| r.rewrite_bytes).sum();
 
     println!(
-        "Done. ok={} needs_remux={} remuxed={} failed={} not_mp4={} unparseable={} missing={} rewrite={}",
+        "Done. ok={} moov_at_end={} needs_remux={} remuxed={} failed={} not_mp4={} unparseable={} missing={} rewrite={}",
         ok,
+        moov_at_end,
         needs_remux,
         remuxed,
         failed,
@@ -464,14 +479,15 @@ pub fn remux_all(work_dirs: &[WorkDir], apply: bool) {
         human_bytes(rewrite_bytes)
     );
 
-    let mut chips = vec![
-        Chip::new("ok", ok, Some("success")),
-        Chip::new(
-            "needs remux",
-            needs_remux,
-            Some(if remaining > 0 { "warning" } else { "success" }),
-        ),
-    ];
+    let mut chips = vec![Chip::new("ok", ok, Some("success"))];
+    if moov_at_end > 0 {
+        chips.push(Chip::new("moov at end (ok)", moov_at_end, None));
+    }
+    chips.push(Chip::new(
+        "needs remux",
+        needs_remux,
+        Some(if remaining > 0 { "warning" } else { "success" }),
+    ));
     if apply {
         chips.push(Chip::new("remuxed", remuxed, Some("success")));
     }
@@ -496,6 +512,12 @@ pub fn remux_all(work_dirs: &[WorkDir], apply: bool) {
         metrics.push(Metric::new(
             "site_server_remux_needs_remux",
             r.remaining() as f64,
+            MetricType::Gauge,
+            &site,
+        ));
+        metrics.push(Metric::new(
+            "site_server_remux_moov_at_end",
+            r.moov_at_end as f64,
             MetricType::Gauge,
             &site,
         ));
