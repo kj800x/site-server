@@ -2,7 +2,7 @@ use maud::{html, Markup};
 use std::collections::HashMap;
 use urlencoding::encode;
 
-use crate::handlers::{calculate_item_index, ExtensionFix, Fa, PaginatorPrefix};
+use crate::handlers::{calculate_item_index, Fa, PaginatorPrefix};
 use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
 
 use super::{ArchiveYear, ListingPageConfig, ListingPageMode, PageUrlState, ViewMode};
@@ -39,8 +39,6 @@ fn item_thumbnail(
     config: &ListingPageConfig,
     position_in_page: usize,
 ) -> Markup {
-    // Use item's source site for asset paths
-    let asset_site = &item.site_settings.site_slug;
     let slideshow_index = calculate_item_index(config, position_in_page);
     let first_file_id =
         crate::handlers::common::get_first_downloaded_file_id(item).unwrap_or_default();
@@ -58,13 +56,7 @@ fn item_thumbnail(
         a.item_thumb_container href=(slideshow_url_path) {
             .item_thumb_img {
                 @if let Some(thumb) = item.thumbnail_path() {
-                    @if thumb.ends_with(".mp4") {
-                        video.thumbnail_preview autoplay loop muted playsinline {
-                            source src=(format!("/{}/assets/{}", asset_site, thumb)) {}
-                        }
-                    } @else {
-                        img src=(format!("/{}/assets/{}", asset_site, thumb)) alt=(item.title) {}
-                    }
+                    (super::thumbnail_media(item, &thumb, None))
                 } @else {
                     p.no_thumbnail { "No thumbnail" }
                 }
@@ -95,6 +87,9 @@ pub fn render_listing_page(
     };
 
     let content = html! {
+        @if let ListingPageMode::ByTag { tag } = &config.mode {
+            (crate::shop::tag_unlock(tag, &format!("/{}/booru/tag/{}", site_prefix, encode(tag))))
+        }
         ( super::paginator(config.page, config.total, config.per_page, &config.paginator_prefix(site_prefix, "booru")) )
         .item_thumb_grid {
             @for (idx, item) in items.iter().enumerate() {
@@ -114,8 +109,6 @@ pub fn render_detail_page(
     url_state: &PageUrlState,
 ) -> Markup {
     let route = url_state.to_route();
-    // Use item's source site for asset paths
-    let asset_site = &item.site_settings.site_slug;
 
     let content = html! {
         article.post {
@@ -125,17 +118,14 @@ pub fn render_detail_page(
                     FileCrawlType::Image { filename, downloaded, .. } => {
                         @if *downloaded {
                             figure.post_figure {
-                                img.post_image src=(format!("/{}/assets/{}", asset_site, filename)) alt=(item.title) {}
+                                (super::post_image(item, filename))
                             }
                         }
                     }
                     FileCrawlType::Video { filename, downloaded, .. } => {
                         @if *downloaded {
-                            @let coerced_filename = filename.as_mp4();
                             figure.post_figure {
-                                video.post_video controls autoplay {
-                                    source src=(format!("/{}/assets/{}", asset_site, coerced_filename)) {}
-                                }
+                                (super::post_video(item, filename))
                             }
                         }
                     }
@@ -238,8 +228,6 @@ pub fn render_slideshow_detail_page(
     next_url: Option<&str>,
 ) -> Markup {
     let route = url_state.to_route();
-    // Use item's source site for asset paths
-    let asset_site = &item.site_settings.site_slug;
 
     // Get file_id for permalink
     let file_id = item
@@ -267,17 +255,14 @@ pub fn render_slideshow_detail_page(
                     FileCrawlType::Image { filename, downloaded, .. } => {
                         @if *downloaded {
                             figure.post_figure {
-                                img.post_image src=(format!("/{}/assets/{}", asset_site, filename)) alt=(item.title) {}
+                                (super::post_image(item, filename))
                             }
                         }
                     }
                     FileCrawlType::Video { filename, downloaded, .. } => {
                         @if *downloaded {
-                            @let coerced_filename = filename.as_mp4();
                             figure.post_figure {
-                                video.post_video controls autoplay {
-                                    source src=(format!("/{}/assets/{}", asset_site, coerced_filename)) {}
-                                }
+                                (super::post_video(item, filename))
                             }
                         }
                     }
@@ -342,8 +327,6 @@ pub fn render_slideshow_full_page(
     back_url: &str,
 ) -> Markup {
     let route = url_state.to_route();
-    // Use item's source site for asset paths
-    let asset_site = &item.site_settings.site_slug;
 
     let content = html! {
         article.post_full {
@@ -361,17 +344,14 @@ pub fn render_slideshow_full_page(
                     FileCrawlType::Image { filename, downloaded, .. } => {
                         @if *downloaded {
                             figure.post_figure {
-                                img.post_image src=(format!("/{}/assets/{}", asset_site, filename)) alt=(item.title) {}
+                                (super::post_image(item, filename))
                             }
                         }
                     }
                     FileCrawlType::Video { filename, downloaded, .. } => {
                         @if *downloaded {
-                            @let coerced_filename = filename.as_mp4();
                             figure.post_figure {
-                                video.post_video controls autoplay {
-                                    source src=(format!("/{}/assets/{}", asset_site, coerced_filename)) {}
-                                }
+                                (super::post_video(item, filename))
                             }
                         }
                     }

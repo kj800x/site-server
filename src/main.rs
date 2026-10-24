@@ -253,6 +253,8 @@ async fn run() -> errors::Result<()> {
 
             let reqwest_client = reqwest::Client::new();
 
+            site_server::shop::init(work_dirs_vec.clone(), reqwest_client.clone());
+
             let listen_address = std::env::var("LISTEN_ADDRESS").unwrap_or("127.0.0.1".to_owned());
 
             log::info!("Starting HTTP server at http://{}:8080", listen_address);
@@ -295,7 +297,8 @@ async fn run() -> errors::Result<()> {
                     .service(handlers::auth::login_submit)
                     .service(handlers::auth::logout)
                     .service(root_index_handler)
-                    .service(sites_json_handler);
+                    .service(sites_json_handler)
+                    .configure(site_server::shop::configure);
 
                 let renderers = [
                     handlers::SiteRendererType::Blog,

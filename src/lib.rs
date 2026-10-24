@@ -56,6 +56,7 @@ pub mod remux;
 pub mod reprocessors;
 pub mod search;
 pub mod serde;
+pub mod shop;
 pub mod site;
 pub mod thread_safe_work_dir;
 pub mod timestring;

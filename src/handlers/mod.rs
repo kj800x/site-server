@@ -71,6 +71,56 @@ impl ExtensionFix for std::string::String {
     }
 }
 
+/// URL of one of an item's assets, served by the item's source site.
+pub fn asset_url(item: &CrawlItem, path: &str) -> String {
+    format!("/{}/assets/{}", item.site_settings.site_slug, path)
+}
+
+// Media helpers: every place that shows an item's media goes through one of
+// these, so the shop lock check (`crate::shop::media`) lives in one place.
+
+/// Listing-card thumbnail. `video_width` sets `width`/`height="auto"` on videos.
+pub fn thumbnail_media(item: &CrawlItem, thumb: &str, video_width: Option<&str>) -> Markup {
+    crate::shop::media(
+        item,
+        true,
+        html! {
+            @if thumb.ends_with(".mp4") {
+                video.thumbnail_preview width=[video_width] height=[video_width.map(|_| "auto")] autoplay loop muted playsinline {
+                    source src=(asset_url(item, thumb)) {}
+                }
+            } @else {
+                img src=(asset_url(item, thumb)) alt=(item.title) {}
+            }
+        },
+    )
+}
+
+/// Full-size image on a detail/slideshow page.
+pub fn post_image(item: &CrawlItem, filename: &str) -> Markup {
+    crate::shop::media(
+        item,
+        false,
+        html! {
+            img.post_image src=(asset_url(item, filename)) alt=(item.title) {}
+        },
+    )
+}
+
+/// Video player on a detail/slideshow page (serves the web-playable variant).
+pub fn post_video(item: &CrawlItem, filename: &str) -> Markup {
+    let coerced_filename = filename.to_string().as_mp4();
+    crate::shop::media(
+        item,
+        false,
+        html! {
+            video.post_video controls autoplay {
+                source src=(asset_url(item, &coerced_filename)) {}
+            }
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::ExtensionFix;
@@ -79,6 +129,51 @@ mod tests {
     fn as_mp4_coerces_unplayable_formats() {
         assert_eq!("video/a.wmv".to_string().as_mp4(), "video/a.mp4");
         assert_eq!("video/a.b.mp4".to_string().as_mp4(), "video/a.b.mp4");
+    }
+
+    #[test]
+    fn media_helpers_match_original_markup() {
+        use super::{post_image, post_video, thumbnail_media};
+        use maud::html;
+        let mut item: crate::site::CrawlItem = serde_json::from_value(serde_json::json!({
+            "title": "A \"title\"", "key": "k", "url": "",
+            "description": {"format": "plaintext", "value": ""}, "meta": {},
+            "firstSeen": 0, "lastSeen": 0, "seenInLastRefresh": true, "tags": [], "files": [],
+        }))
+        .unwrap();
+        item.site_settings.site_slug = "s".to_string();
+        let (asset_site, thumb, filename) = ("s", "t.mp4", "v.wmv");
+        assert_eq!(
+            thumbnail_media(&item, thumb, Some("320")).into_string(),
+            html! {
+                video.thumbnail_preview width="320" height="auto" autoplay loop muted playsinline {
+                    source src=(format!("/{}/assets/{}", asset_site, thumb)) {}
+                }
+            }
+            .into_string()
+        );
+        assert_eq!(
+            thumbnail_media(&item, thumb, None).into_string(),
+            html! {
+                video.thumbnail_preview autoplay loop muted playsinline {
+                    source src=(format!("/{}/assets/{}", asset_site, thumb)) {}
+                }
+            }
+            .into_string()
+        );
+        assert_eq!(
+            thumbnail_media(&item, "t.jpg", Some("320")).into_string(),
+            html! { img src="/s/assets/t.jpg" alt=(item.title) {} }.into_string()
+        );
+        assert_eq!(
+            post_image(&item, "i.png").into_string(),
+            html! { img.post_image src="/s/assets/i.png" alt=(item.title) {} }.into_string()
+        );
+        assert_eq!(
+            post_video(&item, filename).into_string(),
+            html! { video.post_video controls autoplay { source src="/s/assets/v.mp4" {} } }
+                .into_string()
+        );
     }
 
     #[test]
@@ -208,6 +303,7 @@ pub fn header(site_prefix: &str, rendering_prefix: &str, current_route: &str) ->
                 span .rendering-mode .active[rendering_prefix == "r"] {
                     a href=(format!("/{}{}", site_prefix, replace_rendering_prefix("r"))) { "Reddit"}
                 }
+                (crate::shop::badge())
             }
             nav.sub-nav {
                 span .active[current_route.starts_with("/latest")] {
