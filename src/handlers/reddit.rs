@@ -9,9 +9,7 @@ use super::{
     ViewMode,
 };
 use crate::collections::GetKey;
-use crate::handlers::{
-    calculate_item_index, format_year_month, timeago, ExtensionFix, Fa, PaginatorPrefix,
-};
+use crate::handlers::{calculate_item_index, format_year_month, timeago, Fa, PaginatorPrefix};
 use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
 
 fn reddit_layout(title: &str, content: Markup, site: &str, route: &str) -> Markup {
@@ -138,16 +136,8 @@ fn reddit_post_card(
                 }
 
                 @if let Some(thumb) = item.thumbnail_path() {
-                    @if thumb.ends_with(".mp4") {
-                        .post_preview {
-                            video.thumbnail_preview width="320" height="auto" autoplay loop muted playsinline {
-                                source src=(format!("/{}/assets/{}", asset_site, thumb)) {}
-                            }
-                        }
-                    } @else {
-                        .post_preview {
-                            img src=(format!("/{}/assets/{}", asset_site, thumb)) alt=(item.title) {}
-                        }
+                    .post_preview {
+                        (super::thumbnail_media(item, &thumb, Some("320")))
                     }
                 }
             }
@@ -183,6 +173,9 @@ pub fn render_listing_page(
         .reddit_posts_container {
             @if !title.is_empty() && !matches!(config.mode, ListingPageMode::All) {
                 h1.page_title { (title) }
+            }
+            @if let ListingPageMode::ByTag { tag } = &config.mode {
+                (crate::shop::tag_unlock(tag, &format!("/{}/r/tag/{}", site_prefix, encode(tag))))
             }
             .reddit_posts {
                 @for (idx, item) in items.iter().enumerate() {
@@ -288,8 +281,6 @@ pub fn render_media_viewer(
     url_state: &PageUrlState,
 ) -> Markup {
     let index_info = get_file_index_info(item, file);
-    // Use item's source site for asset paths
-    let asset_site = &item.site_settings.site_slug;
     let toggle_url = url_state.toggle_view_mode().to_url();
 
     html!(
@@ -303,7 +294,7 @@ pub fn render_media_viewer(
                 FileCrawlType::Image { filename, downloaded, .. } => {
                     @if *downloaded {
                         figure.post_figure {
-                            img.post_image src=(format!("/{}/assets/{}", asset_site, filename)) alt=(item.title) {}
+                            (super::post_image(item, filename))
                             a.fullscreen_click_target data-toggle-full data-replace-history href=(toggle_url) {}
                             (post_file_paginator(item, file, url_state))
                         }
@@ -311,11 +302,8 @@ pub fn render_media_viewer(
                 }
                 FileCrawlType::Video { filename, downloaded, .. } => {
                     @if *downloaded {
-                        @let coerced_filename = filename.as_mp4();
                         figure.post_figure {
-                            video.post_video controls autoplay {
-                                source src=(format!("/{}/assets/{}", asset_site, coerced_filename)) {}
-                            }
+                            (super::post_video(item, filename))
                             a.fullscreen_link data-toggle-full data-replace-history href=(toggle_url) {
                                 (Fa("expand"))
                             }
@@ -357,8 +345,6 @@ pub fn render_full_media_viewer(
     quit_url: Option<&str>,
 ) -> Markup {
     let index_info = get_file_index_info(item, file);
-    // Use item's source site for asset paths
-    let asset_site = &item.site_settings.site_slug;
     html!(
         .media_viewer {
             @if let Some((current, total)) = index_info {
@@ -370,18 +356,15 @@ pub fn render_full_media_viewer(
                 FileCrawlType::Image { filename, downloaded, .. } => {
                     @if *downloaded {
                         figure.post_figure {
-                            img.post_image src=(format!("/{}/assets/{}", asset_site, filename)) alt=(item.title) {}
+                            (super::post_image(item, filename))
                             (post_file_paginator(item, file, &url_state.with_view_mode(ViewMode::Full)))
                         }
                     }
                 }
                 FileCrawlType::Video { filename, downloaded, .. } => {
                     @if *downloaded {
-                        @let coerced_filename = filename.as_mp4();
                         figure.post_figure {
-                            video.post_video controls autoplay {
-                                source src=(format!("/{}/assets/{}", asset_site, coerced_filename)) {}
-                            }
+                            (super::post_video(item, filename))
                             (post_file_paginator(item, file, &url_state.with_view_mode(ViewMode::Full)))
                         }
                     }

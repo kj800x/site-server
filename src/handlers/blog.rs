@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use urlencoding::encode;
 
 use super::{ArchiveYear, ListingPageConfig, ListingPageMode, PageUrlState, ViewMode};
-use crate::handlers::{calculate_item_index, ExtensionFix, Fa, PaginatorPrefix};
+use crate::handlers::{calculate_item_index, Fa, PaginatorPrefix};
 use crate::site::{CrawlItem, CrawlTag, FileCrawlType};
 
 // Helper functions for rendering blog components
@@ -15,8 +15,6 @@ fn blog_post_card(
     position_in_page: usize,
 ) -> Markup {
     let time = Utc.timestamp_millis_opt(item.source_published).unwrap();
-    // Use item's source site for asset paths
-    let asset_site = &item.site_settings.site_slug;
     let slideshow_index = calculate_item_index(config, position_in_page);
     let first_file_id =
         crate::handlers::common::get_first_downloaded_file_id(item).unwrap_or_default();
@@ -43,16 +41,8 @@ fn blog_post_card(
                 }
             }
             @if let Some(thumb) = item.thumbnail_path() {
-                @if thumb.ends_with(".mp4") {
-                    .post_preview {
-                        video.thumbnail_preview autoplay loop muted playsinline {
-                            source src=(format!("/{}/assets/{}", asset_site, thumb)) {}
-                        }
-                    }
-                } @else {
-                    .post_preview {
-                        img src=(format!("/{}/assets/{}", asset_site, thumb)) alt=(item.title) {}
-                    }
+                .post_preview {
+                    (super::thumbnail_media(item, &thumb, None))
                 }
             }
             .post_excerpt {
@@ -122,6 +112,9 @@ pub fn render_listing_page(
     };
 
     let content = html! {
+        @if let ListingPageMode::ByTag { tag } = &config.mode {
+            (crate::shop::tag_unlock(tag, &format!("/{}/blog/tag/{}", site_prefix, encode(tag))))
+        }
         .blog_posts {
             @for (idx, item) in items.iter().enumerate() {
                 (blog_post_card(item, site_prefix, &config, idx))
@@ -140,8 +133,6 @@ pub fn render_detail_page(
     url_state: &PageUrlState,
 ) -> Markup {
     let route = url_state.to_route();
-    // Use item's source site for asset paths
-    let asset_site = &item.site_settings.site_slug;
     let time = Utc.timestamp_millis_opt(item.source_published).unwrap();
 
     let content = html! {
@@ -159,17 +150,14 @@ pub fn render_detail_page(
                     FileCrawlType::Image { filename, downloaded, .. } => {
                         @if *downloaded {
                             figure.post_figure {
-                                img.post_image src=(format!("/{}/assets/{}", asset_site, filename)) alt=(item.title) {}
+                                (super::post_image(item, filename))
                             }
                         }
                     }
                     FileCrawlType::Video { filename, downloaded, .. } => {
                         @if *downloaded {
-                            @let coerced_filename = filename.as_mp4();
                             figure.post_figure {
-                                video.post_video controls autoplay {
-                                    source src=(format!("/{}/assets/{}", asset_site, coerced_filename)) {}
-                                }
+                                (super::post_video(item, filename))
                             }
                         }
                     }
@@ -275,8 +263,6 @@ pub fn render_slideshow_detail_page(
     next_url: Option<&str>,
 ) -> Markup {
     let route = url_state.to_route();
-    // Use item's source site for asset paths
-    let asset_site = &item.site_settings.site_slug;
     let time = Utc.timestamp_millis_opt(item.source_published).unwrap();
 
     // Get file_id for permalink
@@ -312,17 +298,14 @@ pub fn render_slideshow_detail_page(
                     FileCrawlType::Image { filename, downloaded, .. } => {
                         @if *downloaded {
                             figure.post_figure {
-                                img.post_image src=(format!("/{}/assets/{}", asset_site, filename)) alt=(item.title) {}
+                                (super::post_image(item, filename))
                             }
                         }
                     }
                     FileCrawlType::Video { filename, downloaded, .. } => {
                         @if *downloaded {
-                            @let coerced_filename = filename.as_mp4();
                             figure.post_figure {
-                                video.post_video controls autoplay {
-                                    source src=(format!("/{}/assets/{}", asset_site, coerced_filename)) {}
-                                }
+                                (super::post_video(item, filename))
                             }
                         }
                     }
@@ -388,8 +371,6 @@ pub fn render_slideshow_full_page(
     back_url: &str,
 ) -> Markup {
     let route = url_state.to_route();
-    // Use item's source site for asset paths
-    let asset_site = &item.site_settings.site_slug;
 
     let content = html! {
         article.blog_post_full {
@@ -407,17 +388,14 @@ pub fn render_slideshow_full_page(
                     FileCrawlType::Image { filename, downloaded, .. } => {
                         @if *downloaded {
                             figure.post_figure {
-                                img.post_image src=(format!("/{}/assets/{}", asset_site, filename)) alt=(item.title) {}
+                                (super::post_image(item, filename))
                             }
                         }
                     }
                     FileCrawlType::Video { filename, downloaded, .. } => {
                         @if *downloaded {
-                            @let coerced_filename = filename.as_mp4();
                             figure.post_figure {
-                                video.post_video controls autoplay {
-                                    source src=(format!("/{}/assets/{}", asset_site, coerced_filename)) {}
-                                }
+                                (super::post_video(item, filename))
                             }
                         }
                     }
