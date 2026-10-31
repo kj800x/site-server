@@ -112,7 +112,7 @@ pub fn render_detail_page(
 
     let content = html! {
         article.post {
-            h1 { (item.title) }
+            h1 { (item.title) (crate::handlers::common::partial_release_badge(item)) }
             .post_content {
                 @match file {
                     FileCrawlType::Image { filename, downloaded, .. } => {
@@ -249,7 +249,7 @@ pub fn render_slideshow_detail_page(
                     a.slideshow_next href=(next) data-item-next data-replace-history { (Fa("chevron-right")) }
                 }
             }
-            h1 { (item.title) }
+            h1 { (item.title) (crate::handlers::common::partial_release_badge(item)) }
             .post_content {
                 @match file {
                     FileCrawlType::Image { filename, downloaded, .. } => {

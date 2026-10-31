@@ -33,6 +33,7 @@ fn blog_post_card(
             header.post_header {
                 h3.post_title {
                     a href=(slideshow_url_path) { (item.title) }
+                    (crate::handlers::common::partial_release_badge(item))
                 }
             }
             .post_meta {
@@ -138,7 +139,7 @@ pub fn render_detail_page(
     let content = html! {
         article.blog_post {
             header.post_header {
-                h1.post_title { (item.title) }
+                h1.post_title { (item.title) (crate::handlers::common::partial_release_badge(item)) }
                 .post_meta {
                     time datetime=(time.to_rfc3339()) {
                         (time.format("%B %d, %Y"))
@@ -286,7 +287,7 @@ pub fn render_slideshow_detail_page(
                 }
             }
             header.post_header {
-                h1.post_title { (item.title) }
+                h1.post_title { (item.title) (crate::handlers::common::partial_release_badge(item)) }
                 .post_meta {
                     time datetime=(time.to_rfc3339()) {
                         (time.format("%B %d, %Y"))

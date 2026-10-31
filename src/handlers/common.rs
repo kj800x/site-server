@@ -47,3 +47,17 @@ pub fn get_first_downloaded_file_id(item: &crate::site::CrawlItem) -> Option<Str
         .next()
         .cloned()
 }
+
+/// Marks an item the source has only partly published so far (e.g. QC posts the stills of an
+/// update weeks before its video). Set by the crawler as `meta.partialRelease`.
+pub fn partial_release_badge(item: &crate::site::CrawlItem) -> maud::Markup {
+    use maud::html;
+
+    html! {
+        @if item.meta.get("partialRelease").and_then(|x| x.as_bool()) == Some(true) {
+            span.partial_release_badge title="The source has only published part of this item so far" {
+                "Partial"
+            }
+        }
+    }
+}

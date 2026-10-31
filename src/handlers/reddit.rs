@@ -121,7 +121,7 @@ fn reddit_post_card(
 
             .post_content {
                 @if !hide_titles {
-                    h2.post_title id=(title_id) { (item.title) }
+                    h2.post_title id=(title_id) { (item.title) (crate::handlers::common::partial_release_badge(item)) }
                 }
 
                 .post_tags {
@@ -414,7 +414,7 @@ pub fn render_detail_page(
                 span.post_time { (timeago(item.source_published as u64)) }
                 (file_counts(item))
             }
-            h1.post_title { (item.title) }
+            h1.post_title { (item.title) (crate::handlers::common::partial_release_badge(item)) }
             .post_content {
                 @if item.flat_files().iter().filter(|(_, f)| f.is_downloaded()).count() > 0 {
                     a.toggle-full-link data-toggle-full data-replace-history href=(toggle_url) style="display: none;" {}
@@ -573,7 +573,7 @@ pub fn render_slideshow_detail_page(
                 span.post_time { (timeago(item.source_published as u64)) }
                 (file_counts(item))
             }
-            h1.post_title { (item.title) }
+            h1.post_title { (item.title) (crate::handlers::common::partial_release_badge(item)) }
             .post_content {
                 @if item.flat_files().iter().filter(|(_, f)| f.is_downloaded()).count() > 0 {
                     a.toggle-full-link data-toggle-full data-replace-history href=(toggle_url) style="display: none;" {}
